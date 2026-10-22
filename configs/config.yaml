@@ -1,0 +1,104 @@
+# MODAL-Net default configuration
+# Every key can be overridden with --set key=value on the CLI.
+
+paths:
+  aptos:
+    train_images: datasets/APTOS_19/train_images
+    val_images: datasets/APTOS_19/val_images
+    test_images: datasets/APTOS_19/test_images
+    train_csv: datasets/APTOS_19/train_1.csv
+    val_csv: datasets/APTOS_19/valid.csv
+    test_csv: datasets/APTOS_19/test.csv
+  messidor:
+    images: datasets/Messidor_2/images
+    csv: datasets/Messidor_2/messidor_data.csv
+  eyepacs:
+    images: datasets/EyePACS/EyePACS
+    labels_csv: datasets/EyePACS/trainLabels.csv/trainLabels.csv
+    lesion_labels: datasets/EyePACS/lesion_labels
+
+backbone: maxvit_large_tf_512.in21k_ft_in1k
+img_size: 512
+img_size_arg: null
+num_classes: 5
+head_type: softmax
+preproc: legacy
+aug: basic
+
+epochs: 30
+warmup_epochs: 2
+patience: 8
+batch_size: 16
+grad_accum: 1
+num_workers: 8
+grad_checkpointing: false
+seed: 0
+n_folds: 5
+kfold_seed: 42
+
+lr: 1.0e-4
+llrd: 0.8
+head_mult: 10
+weight_decay: 0.05
+drop_path: 0.3
+head_dropout: 0.3
+grad_clip: 1.0
+freeze_epochs: 1
+
+loss: ce
+lambda_emd: 1.0
+ordinal_eps: 0.1
+ordinal_sigma: 0.7
+mix_prob: 0.5
+mixup_alpha: 0.2
+cutmix_alpha: 1.0
+ema_decay: 0.999
+use_sam: false
+sam_rho: 0.05
+
+soft_labels: none
+soft_label_run: null
+alpha_max: 0.4
+inner_k: 4
+inner_epochs: 15
+
+pretrain_path: null
+joint_eyepacs: false
+joint_w: 0.5
+eyepacs_max: 20000
+
+amp_mix: false
+amp_prob: 0.5
+amp_beta_min: 0.01
+amp_beta_max: 0.10
+amp_stage: pre
+style_bank_size: 2000
+
+mixstyle: false
+ms_p: 0.5
+ms_alpha: 0.1
+ms_stages: [0, 1]
+uda_style_pool: none
+use_wghr: false
+
+tta: none
+tta_scales: [1.0]
+temperature_scaling: true
+conformal_alpha: 0.10
+recalibrate: none
+winner_eligible: true
+bundle_from: null
+ckpt_from: null
+
+pre_epochs: 15
+ssl_init: null
+
+# XAI Grid & Interpretability
+xai_seed: 0
+xai_top_k: 10
+xai_methods: [gradcampp, gradcam, layercam, eigencam]
+xai_show_lesions: true
+xai_split: test
+xai_alpha: 0.5
+xai_quant: false
+xai_quant_max_images: 400

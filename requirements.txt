@@ -1,0 +1,36 @@
+# MODAL-Net environment. Tested on: macOS (Darwin 24.6.0 arm64), Python 3.9.6, torch 2.8.0, torchvision 0.23.0, CUDA: no GPU in the test environment (Apple MPS available), cuDNN: UNTESTED - recommended (CUDA 12.4 + cuDNN 9.x for cluster training).
+# Setup (no download links in any command):
+#   1) python -m venv .venv ; source .venv/bin/activate
+#   2) Install the torch/torchvision pair listed below with the CUDA build that matches the server driver, using whatever your cluster supports (module, conda channel, internal mirror or pre-downloaded wheels). Do not edit the pinned versions casually.
+#   3) pip install -r requirements.txt
+#   4) python tools/env_report.py     # prints python/torch/CUDA/cuDNN/timm/albumentations versions; compare with this header
+#   5) pytest -q                      # fast checks (splits, metrics, selection guard); run before long experiments
+# Offline cluster: export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 and pre-populate the timm/HF cache with the MaxViT-L, ConvNeXtV2-L and EfficientNetV2-M weights (ids listed in agent_context/MODAL_PART1.md S3).
+
+# Core framework (pinned to tested environment versions)
+torch==2.8.0
+torchvision==0.23.0
+
+# Deep learning backbone & augmentation libraries
+timm==1.0.30
+albumentations==2.0.8
+
+# Computer vision and image processing
+opencv-python-headless==5.0.0.93
+Pillow==11.3.0
+
+# Numerical, statistical, and tabular analysis
+numpy==2.0.2
+pandas==2.3.3
+scipy==1.13.1
+scikit-learn==1.6.1
+
+# Utilities, visualization, and test framework
+PyYAML==6.0.3
+tqdm==4.68.3
+matplotlib==3.9.4
+pytest==8.4.2
+
+# Optional dependencies (uncomment if required on server):
+# seaborn==0.13.2
+# pytorch-grad-cam==0.1.37

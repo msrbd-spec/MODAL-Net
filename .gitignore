@@ -1,0 +1,85 @@
+# =============================================================================
+# MODAL-Net .gitignore
+# =============================================================================
+
+# --- Byte-compiled / optimized / test caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments & local configuration ---
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# --- IDEs and OS metadata ---
+.idea/
+.vscode/
+.DS_Store
+__MACOSX/
+*.swp
+*~
+
+# --- Distribution & builds ---
+build/
+dist/
+*.egg-info/
+
+# --- Job logs and monitoring ---
+nohup.out
+slurm-*.out
+wandb/
+*.log
+
+# --- Large model checkpoints & binaries ---
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.zip
+*.tar
+*.tar.gz
+
+# --- Tests directory (tracked by default for verification) ---
+# Uncomment the line below to exclude the test suite from version control:
+# tests/
+
+# --- Datasets (images & data CSVs never committed; symlinked on cluster) ---
+datasets/**
+!datasets/
+!datasets/README.md
+
+# --- Logs (directories preserved via .gitkeep, files ignored) ---
+logs/**
+!logs/**/
+!logs/**/.gitkeep
+
+# --- Checkpoints (directories preserved via .gitkeep, weights ignored) ---
+checkpoints/**
+!checkpoints/**/
+!checkpoints/**/.gitkeep
+
+# --- Soft labels (directories preserved via .gitkeep, .npz ignored) ---
+softlabels/**
+!softlabels/**/
+!softlabels/**/.gitkeep
+
+# --- Results artifacts (directories preserved via .gitkeep, run outputs ignored) ---
+results/**
+!results/**/
+!results/**/.gitkeep
+
+# Optional: uncomment to track master summary tables or final figures in git:
+# !results/master/*.csv
+# !results/tables/*.csv
+# !results/tables/*.tex
+# !results/figures/*.png
+# !results/figures/*.pdf
+
+# --- CRITICAL: Always track agent_context/ completely ---
+# Ensure no generic pattern (*.csv, *.md, *.py, *.pt, *.zip) ignores agent_context/ files
+!agent_context/**
