@@ -1,0 +1,1082 @@
+{
+  "Fold_1": {
+    "noDP": {
+      "standard": {
+        "accuracy": 0.9446366782006921,
+        "macro_f1": 0.9388921126824352,
+        "macro_precision": 0.9334240884592839,
+        "macro_recall": 0.9455393069523504,
+        "auroc_macro": 0.9915838091623603,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.8478260869565217,
+            "recall": 0.9285714285714286,
+            "f1": 0.8863636363636364,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.978494623655914,
+            "recall": 0.9891304347826086,
+            "f1": 0.9837837837837838,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.9545454545454546,
+            "recall": 0.9545454545454546,
+            "f1": 0.9545454545454546,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.9528301886792453,
+            "recall": 0.9099099099099099,
+            "f1": 0.9308755760368663,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            39,
+            0,
+            0,
+            3
+          ],
+          [
+            0,
+            91,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            42,
+            1
+          ],
+          [
+            6,
+            2,
+            2,
+            101
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": null,
+      "privacy_summary": null
+    },
+    "eps12": {
+      "standard": {
+        "accuracy": 0.5501730103806228,
+        "macro_f1": 0.32658668730650153,
+        "macro_precision": 0.33040393013100433,
+        "macro_recall": 0.3818301997649824,
+        "auroc_macro": 0.7603136601025707,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.85,
+            "recall": 0.5543478260869565,
+            "f1": 0.6710526315789473,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.47161572052401746,
+            "recall": 0.972972972972973,
+            "f1": 0.6352941176470588,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            0,
+            3,
+            0,
+            39
+          ],
+          [
+            0,
+            51,
+            0,
+            41
+          ],
+          [
+            0,
+            3,
+            0,
+            41
+          ],
+          [
+            0,
+            3,
+            0,
+            108
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 12.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 12.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 50,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          11.993157319502842,
+          11.991027775234901,
+          11.997514095452924,
+          11.992286047437531,
+          11.995593319275287
+        ],
+        "achieved_epsilon_mean": 11.993915711380698,
+        "achieved_epsilon_max": 11.997514095452924,
+        "sigma_per_client": [
+          2.41455078125,
+          2.12158203125,
+          1.5380859375,
+          1.666259765625,
+          1.8450927734375
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 2.41455078125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.12158203125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 1.5380859375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 1.666259765625,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 1.8450927734375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    },
+    "eps8": {
+      "standard": {
+        "accuracy": 0.28719723183391005,
+        "macro_f1": 0.16420829142920995,
+        "macro_precision": 0.12883558220889554,
+        "macro_recall": 0.23503861003861004,
+        "auroc_macro": 0.5551245402377689,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.11304347826086956,
+            "recall": 0.30952380952380953,
+            "f1": 0.16560509554140126,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.40229885057471265,
+            "recall": 0.6306306306306306,
+            "f1": 0.49122807017543857,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            13,
+            0,
+            0,
+            29
+          ],
+          [
+            36,
+            0,
+            0,
+            56
+          ],
+          [
+            25,
+            0,
+            0,
+            19
+          ],
+          [
+            41,
+            0,
+            0,
+            70
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 8.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 8.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 24,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          5.2505602704553915,
+          5.250020640541433,
+          5.262076076129445,
+          5.259208131819594,
+          5.256741310118612
+        ],
+        "achieved_epsilon_mean": 5.2557212858128945,
+        "achieved_epsilon_max": 5.262076076129445,
+        "sigma_per_client": [
+          3.30322265625,
+          2.8857421875,
+          2.04345703125,
+          2.22900390625,
+          2.48779296875
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 3.30322265625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.8857421875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 2.04345703125,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 2.22900390625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 2.48779296875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    }
+  },
+  "Fold_3": {
+    "noDP": {
+      "standard": {
+        "accuracy": 0.9134948096885813,
+        "macro_f1": 0.9080448804832106,
+        "macro_precision": 0.9084336007130125,
+        "macro_recall": 0.9128492199144373,
+        "auroc_macro": 0.9885932504303125,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.7450980392156863,
+            "recall": 0.9047619047619048,
+            "f1": 0.8172043010752689,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.9886363636363636,
+            "recall": 0.9456521739130435,
+            "f1": 0.9666666666666667,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 1.0,
+            "recall": 0.9090909090909091,
+            "f1": 0.9523809523809523,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.9,
+            "recall": 0.8918918918918919,
+            "f1": 0.8959276018099548,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            38,
+            0,
+            0,
+            4
+          ],
+          [
+            1,
+            87,
+            0,
+            4
+          ],
+          [
+            1,
+            0,
+            40,
+            3
+          ],
+          [
+            11,
+            1,
+            0,
+            99
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": null,
+      "privacy_summary": null
+    },
+    "eps12": {
+      "standard": {
+        "accuracy": 0.3771626297577855,
+        "macro_f1": 0.21404172902544238,
+        "macro_precision": 0.18706111476848802,
+        "macro_recall": 0.261310223266745,
+        "auroc_macro": 0.5618228130384556,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.3655913978494624,
+            "recall": 0.3695652173913043,
+            "f1": 0.3675675675675676,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.3826530612244898,
+            "recall": 0.6756756756756757,
+            "f1": 0.48859934853420195,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            0,
+            6,
+            0,
+            36
+          ],
+          [
+            0,
+            34,
+            0,
+            58
+          ],
+          [
+            0,
+            17,
+            0,
+            27
+          ],
+          [
+            0,
+            36,
+            0,
+            75
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 12.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 12.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 30,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          8.872788335298036,
+          8.876540064776616,
+          8.894864293288379,
+          8.887313939607104,
+          8.885388853833954
+        ],
+        "achieved_epsilon_mean": 8.883379097360818,
+        "achieved_epsilon_max": 8.894864293288379,
+        "sigma_per_client": [
+          2.41455078125,
+          2.12158203125,
+          1.5380859375,
+          1.666259765625,
+          1.8450927734375
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 2.41455078125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.12158203125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 1.5380859375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 1.666259765625,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 1.8450927734375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    },
+    "eps8": {
+      "standard": {
+        "accuracy": 0.3737024221453287,
+        "macro_f1": 0.21500721500721498,
+        "macro_precision": 0.18525105680998039,
+        "macro_recall": 0.26091852722287506,
+        "auroc_macro": 0.5535198249967548,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.3584905660377358,
+            "recall": 0.41304347826086957,
+            "f1": 0.3838383838383838,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.3825136612021858,
+            "recall": 0.6306306306306306,
+            "f1": 0.47619047619047616,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            0,
+            8,
+            0,
+            34
+          ],
+          [
+            0,
+            38,
+            0,
+            54
+          ],
+          [
+            0,
+            19,
+            0,
+            25
+          ],
+          [
+            0,
+            41,
+            0,
+            70
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 8.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 8.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 33,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          6.289674976003668,
+          6.287373332287154,
+          6.298352116330837,
+          6.295802245108249,
+          6.293948142439636
+        ],
+        "achieved_epsilon_mean": 6.293030162433909,
+        "achieved_epsilon_max": 6.298352116330837,
+        "sigma_per_client": [
+          3.30322265625,
+          2.8857421875,
+          2.04345703125,
+          2.22900390625,
+          2.48779296875
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 3.30322265625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.8857421875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 2.04345703125,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 2.22900390625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 2.48779296875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    }
+  },
+  "Fold_5": {
+    "noDP": {
+      "standard": {
+        "accuracy": 0.9065743944636678,
+        "macro_f1": 0.8904741869946778,
+        "macro_precision": 0.903392902991932,
+        "macro_recall": 0.8826383907905646,
+        "auroc_macro": 0.984026705666749,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.8823529411764706,
+            "recall": 0.7142857142857143,
+            "f1": 0.7894736842105263,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.967032967032967,
+            "recall": 0.9565217391304348,
+            "f1": 0.9617486338797814,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.8913043478260869,
+            "recall": 0.9318181818181818,
+            "f1": 0.9111111111111111,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.8728813559322034,
+            "recall": 0.9279279279279279,
+            "f1": 0.8995633187772926,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            30,
+            2,
+            2,
+            8
+          ],
+          [
+            0,
+            88,
+            0,
+            4
+          ],
+          [
+            0,
+            0,
+            41,
+            3
+          ],
+          [
+            4,
+            1,
+            3,
+            103
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": null,
+      "privacy_summary": null
+    },
+    "eps12": {
+      "standard": {
+        "accuracy": 0.22837370242214533,
+        "macro_f1": 0.12822118011291203,
+        "macro_precision": 0.10051072522982635,
+        "macro_recall": 0.18194980694980695,
+        "auroc_macro": 0.4666289350056881,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.08181818181818182,
+            "recall": 0.21428571428571427,
+            "f1": 0.11842105263157894,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.3202247191011236,
+            "recall": 0.5135135135135135,
+            "f1": 0.3944636678200692,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            9,
+            0,
+            1,
+            32
+          ],
+          [
+            30,
+            0,
+            0,
+            62
+          ],
+          [
+            17,
+            0,
+            0,
+            27
+          ],
+          [
+            54,
+            0,
+            0,
+            57
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 12.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 12.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 22,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          7.424156824685,
+          7.430949501940354,
+          7.455935197138149,
+          7.4469049720908655,
+          7.442242223996129
+        ],
+        "achieved_epsilon_mean": 7.4400377439701,
+        "achieved_epsilon_max": 7.455935197138149,
+        "sigma_per_client": [
+          2.41455078125,
+          2.12158203125,
+          1.5380859375,
+          1.666259765625,
+          1.8450927734375
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 2.41455078125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.12158203125,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 1.5380859375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 1.666259765625,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 1.8450927734375,
+            "target_epsilon": 12.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    },
+    "eps8": {
+      "standard": {
+        "accuracy": 0.28027681660899656,
+        "macro_f1": 0.15008275239480415,
+        "macro_precision": 0.11514053897421038,
+        "macro_recall": 0.21573359073359075,
+        "auroc_macro": 0.47353402500230446,
+        "per_class": {
+          "Chickenpox": {
+            "precision": 0.10588235294117647,
+            "recall": 0.21428571428571427,
+            "f1": 0.14173228346456693,
+            "support": 42
+          },
+          "Healthy": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 92
+          },
+          "Measles": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 44
+          },
+          "Monkeypox": {
+            "precision": 0.35467980295566504,
+            "recall": 0.6486486486486487,
+            "f1": 0.4585987261146497,
+            "support": 111
+          }
+        },
+        "confusion_matrix": [
+          [
+            9,
+            0,
+            1,
+            32
+          ],
+          [
+            26,
+            0,
+            0,
+            66
+          ],
+          [
+            11,
+            0,
+            0,
+            33
+          ],
+          [
+            39,
+            0,
+            0,
+            72
+          ]
+        ],
+        "n_samples": 289
+      },
+      "epsilon_target": 8.0,
+      "privacy_summary": {
+        "privacy_unit": "one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, augmentation is online with one random view per sampled image per step, sampling is Poisson over unique originals. Not patient-level, since no patient identifiers exist.",
+        "target_epsilon": 8.0,
+        "target_delta": 1e-05,
+        "accountant": "rdp",
+        "rounds_run": 24,
+        "rounds_budgeted_for_sigma": 50,
+        "n_unique_images_per_client": [
+          85,
+          128,
+          267,
+          216,
+          172
+        ],
+        "offline_augmented_copies_used": 0,
+        "achieved_epsilon_per_client": [
+          5.2505602704553915,
+          5.250020640541433,
+          5.262076076129445,
+          5.259208131819594,
+          5.256741310118612
+        ],
+        "achieved_epsilon_mean": 5.2557212858128945,
+        "achieved_epsilon_max": 5.262076076129445,
+        "sigma_per_client": [
+          3.30322265625,
+          2.8857421875,
+          2.04345703125,
+          2.22900390625,
+          2.48779296875
+        ],
+        "audit_trail": [
+          {
+            "client": 1,
+            "n_unique_images": 85,
+            "batches_per_epoch": 6,
+            "sample_rate": 0.16666666666666666,
+            "total_steps_budgeted": 900,
+            "sigma": 3.30322265625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 2,
+            "n_unique_images": 128,
+            "batches_per_epoch": 8,
+            "sample_rate": 0.125,
+            "total_steps_budgeted": 1200,
+            "sigma": 2.8857421875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 3,
+            "n_unique_images": 267,
+            "batches_per_epoch": 17,
+            "sample_rate": 0.058823529411764705,
+            "total_steps_budgeted": 2550,
+            "sigma": 2.04345703125,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 4,
+            "n_unique_images": 216,
+            "batches_per_epoch": 14,
+            "sample_rate": 0.07142857142857142,
+            "total_steps_budgeted": 2100,
+            "sigma": 2.22900390625,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          },
+          {
+            "client": 5,
+            "n_unique_images": 172,
+            "batches_per_epoch": 11,
+            "sample_rate": 0.09090909090909091,
+            "total_steps_budgeted": 1650,
+            "sigma": 2.48779296875,
+            "target_epsilon": 8.0,
+            "target_delta": 1e-05
+          }
+        ]
+      }
+    }
+  }
+}
