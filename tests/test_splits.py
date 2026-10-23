@@ -20,7 +20,7 @@ from src.data.splits import (
 
 
 @pytest.fixture
-def synthetic_data_env(tmp_path):
+def synthetic_data_env(tmp_path, monkeypatch):
     """Create a temporary dataset environment matching Part 1 S4 schema."""
     aptos_dir = tmp_path / "APTOS_19"
     aptos_dir.mkdir()
@@ -79,6 +79,11 @@ def synthetic_data_env(tmp_path):
     cfg["paths"]["aptos"]["test_csv"] = str(aptos_dir / "test.csv")
     cfg["paths"]["messidor"]["csv"] = str(messidor_dir / "messidor_data.csv")
     cfg["paths"]["eyepacs"]["labels_csv"] = str(eyepacs_dir / "trainLabels.csv")
+
+    # make_splits() writes to hardcoded relative paths ("splits/...",
+    # "results/phase0_protocol/..."). Run the test from tmp_path so the
+    # synthetic artifacts never overwrite the real ones in the repo.
+    monkeypatch.chdir(tmp_path)
 
     return cfg
 
