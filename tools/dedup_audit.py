@@ -79,6 +79,77 @@ def hamming(a, b):
 
 
 # ---------------------------------------------------------------------------
+# Vectorized pairwise comparison (numpy) — replaces the O(n^2) pure-Python
+# double loop, which was intractable for EyePACS (~4.4 billion pairs).
+# ---------------------------------------------------------------------------
+
+# Precomputed popcount for every byte value.
+_POPCOUNT8 = np.unpackbits(np.arange(256, dtype=np.uint8)[:, None], axis=1).sum(axis=1).astype(np.uint8)
+
+
+def _hashes_to_bits(hashes):
+    """Convert a sequence of 64-bit int hashes to an (N, 8) uint8 byte array."""
+    if len(hashes) == 0:
+        return np.zeros((0, 8), dtype=np.uint8)
+    arr = np.asarray(hashes, dtype=np.uint64)
+    # (N, 8) view of each 64-bit hash as 8 bytes (little-endian on x86)
+    return arr.view(np.uint8).reshape(len(arr), 8).copy()
+
+
+def _popcount_xor(bits_a, bits_b):
+    """Pairwise Hamming distances between rows of bits_a and bits_b.
+
+    bits_a: (n, 8) uint8, bits_b: (m, 8) uint8. Returns (n, m) uint8 distances.
+    """
+    xor = bits_a[:, None, :] ^ bits_b[None, :, :]   # (n, m, 8)
+    return _POPCOUNT8[xor].sum(axis=2).astype(np.uint8)  # (n, m)
+
+
+def _compare_vectorized(set_a, label_a, set_b, label_b, max_dist=4,
+                        same_set=False, chunk_a=1024, chunk_b=4096, pbar=None):
+    """Vectorized pair search: all (i, j) with Hamming(a_i, b_j) <= max_dist.
+
+    If same_set, the upper triangle is compared (i < j) and set_b is set_a.
+    Returns a list of pair dicts. chunk_a/chunk_b bound the working array
+    size to chunk_a * chunk_b * 8 bytes.
+    """
+    n = len(set_a)
+    pairs = []
+    ids_a = [x[0] for x in set_a]
+    bits_a = _hashes_to_bits([x[1] for x in set_a])
+    if same_set:
+        ids_b, bits_b = ids_a, bits_a
+    else:
+        ids_b = [x[0] for x in set_b]
+        bits_b = _hashes_to_bits([x[1] for x in set_b])
+    if n == 0 or len(ids_b) == 0:
+        return pairs
+
+    for i0 in range(0, n, chunk_a):
+        i1 = min(i0 + chunk_a, n)
+        # For same_set, skip blocks entirely below the diagonal
+        j_start = i0 if same_set else 0
+        for j0 in range(j_start, len(ids_b), chunk_b):
+            j1 = min(j0 + chunk_b, len(ids_b))
+            dist = _popcount_xor(bits_a[i0:i1], bits_b[j0:j1])
+            if same_set:
+                # mask out j <= i within the diagonal block
+                rows = np.arange(i0, i1)[:, None]
+                cols = np.arange(j0, j1)[None, :]
+                dist = np.where(cols > rows, dist, 255)
+            hits = np.argwhere(dist <= max_dist)
+            for r, c in hits:
+                pairs.append({
+                    'dataset_a': label_a, 'id_a': ids_a[i0 + int(r)],
+                    'dataset_b': label_b, 'id_b': ids_b[j0 + int(c)],
+                    'hamming_distance': int(dist[r, c])
+                })
+        if pbar is not None:
+            pbar.update(i1 - i0)
+    return pairs
+
+
+# ---------------------------------------------------------------------------
 # Batch hashing
 # ---------------------------------------------------------------------------
 
@@ -98,8 +169,26 @@ def _collect_images(dirs, extensions=('.png', '.jpg', '.jpeg')):
     return items
 
 
-def _hash_all(image_items, label=''):
-    """Compute pHash for a list of (path, id) tuples. Returns list of (id, hash)."""
+def _hash_all(image_items, label='', cache_dir=None):
+    """Compute pHash for a list of (path, id) tuples. Returns list of (id, hash).
+
+    If cache_dir is given, results are cached in <cache_dir>/phash_<label>.npz
+    so re-running the audit skips the (expensive) image hashing step.
+    """
+    cache_path = None
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, f'phash_{label}.npz')
+        if os.path.isfile(cache_path):
+            try:
+                z = np.load(cache_path, allow_pickle=False)
+                cached = list(zip(z['ids'].tolist(), z['hashes'].tolist()))
+                if len(cached) == len(image_items):
+                    print(f'pHash {label}: loaded {len(cached)} hashes from cache')
+                    return cached
+            except Exception:
+                pass  # cache unreadable -> recompute
+
     results = []
     for path, img_id in tqdm(image_items, desc=f'pHash {label}'):
         img = cv2.imread(path)
@@ -110,6 +199,14 @@ def _hash_all(image_items, label=''):
             results.append((img_id, h))
         except Exception:
             continue
+
+    if cache_path and results:
+        try:
+            ids = np.array([r[0] for r in results])
+            hashes = np.array([r[1] for r in results], dtype=np.uint64)
+            np.savez_compressed(cache_path, ids=ids, hashes=hashes)
+        except Exception as e:
+            print(f'pHash {label}: cache write failed ({e})')
     return results
 
 
@@ -136,38 +233,31 @@ def run_dedup_audit(cfg):
     print(f'dedup_audit: APTOS={len(aptos_items)}, '
           f'EyePACS={len(eyepacs_items)}, Messidor={len(mess_items)}')
 
-    # Compute hashes
-    aptos_hashes = _hash_all(aptos_items, 'APTOS')
-    mess_hashes = _hash_all(mess_items, 'Messidor')
-    eyepacs_hashes = _hash_all(eyepacs_items, 'EyePACS')
+    # Compute hashes (cached under results/phase0_protocol/audit/)
+    cache_dir = os.path.join('results', 'phase0_protocol', 'audit')
+    aptos_hashes = _hash_all(aptos_items, 'APTOS', cache_dir=cache_dir)
+    mess_hashes = _hash_all(mess_items, 'Messidor', cache_dir=cache_dir)
+    eyepacs_hashes = _hash_all(eyepacs_items, 'EyePACS', cache_dir=cache_dir)
 
-    # Compare all pairs with Hamming <= 4
-    pairs = []
-
+    # Compare all pairs with Hamming <= 4 (vectorized; progress over rows of A)
     def _compare(set_a, label_a, set_b, label_b, same_set=False):
-        """Compare hashes between two sets. If same_set, skip (i, i)."""
-        for i, (id_a, h_a) in enumerate(set_a):
-            start = i + 1 if same_set else 0
-            for j in range(start, len(set_b)):
-                id_b, h_b = set_b[j]
-                d = hamming(h_a, h_b)
-                if d <= 4:
-                    pairs.append({
-                        'dataset_a': label_a, 'id_a': id_a,
-                        'dataset_b': label_b, 'id_b': id_b,
-                        'hamming_distance': d
-                    })
+        n = len(set_a)
+        with tqdm(total=n, desc=f'dupes {label_a} vs {label_b}') as pbar:
+            return _compare_vectorized(set_a, label_a, set_b, label_b,
+                                       max_dist=4, same_set=same_set,
+                                       pbar=pbar)
 
+    pairs = []
     # Within-dataset
-    _compare(aptos_hashes, 'APTOS', aptos_hashes, 'APTOS', same_set=True)
-    _compare(mess_hashes, 'Messidor', mess_hashes, 'Messidor', same_set=True)
-    _compare(eyepacs_hashes, 'EyePACS', eyepacs_hashes, 'EyePACS',
-             same_set=True)
+    pairs += _compare(aptos_hashes, 'APTOS', aptos_hashes, 'APTOS', same_set=True)
+    pairs += _compare(mess_hashes, 'Messidor', mess_hashes, 'Messidor', same_set=True)
+    pairs += _compare(eyepacs_hashes, 'EyePACS', eyepacs_hashes, 'EyePACS',
+                      same_set=True)
 
     # Cross-dataset
-    _compare(aptos_hashes, 'APTOS', mess_hashes, 'Messidor')
-    _compare(aptos_hashes, 'APTOS', eyepacs_hashes, 'EyePACS')
-    _compare(mess_hashes, 'Messidor', eyepacs_hashes, 'EyePACS')
+    pairs += _compare(aptos_hashes, 'APTOS', mess_hashes, 'Messidor')
+    pairs += _compare(aptos_hashes, 'APTOS', eyepacs_hashes, 'EyePACS')
+    pairs += _compare(mess_hashes, 'Messidor', eyepacs_hashes, 'EyePACS')
 
     # Write output
     import pandas as pd
