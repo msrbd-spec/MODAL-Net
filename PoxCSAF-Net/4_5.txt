@@ -1,0 +1,6 @@
+Device: cuda
+External images: 570  per class: {'Chickenpox': 187, 'Measles': 200, 'Monkeypox': 183}
+Traceback (most recent call last):
+  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/mpo/4_5.py", line 243, in <module>
+    raise RuntimeError(f'{fold}: checkpoint is missing weights {res.missing_keys[:5]} ...')
+RuntimeError: Fold_1: checkpoint is missing weights ['stage0.blocks.0.conv_dw.weight', 'stage0.blocks.0.conv_dw.bias', 'stage0.blocks.0.norm.weight', 'stage0.blocks.0.norm.bias', 'stage0.blocks.0.mlp.fc1.weight'] ...
