@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
+import warnings
 
 
 class ProjectionHead(nn.Module):
@@ -160,29 +161,31 @@ class SSLModel(nn.Module):
     Full SSL pretraining model combining contrastive learning + multi-task.
 
     Args:
-        backbone_name: timm model name (default: maxvit_large_tf_512.in21k_ft_in1k)
+        backbone_name: timm model name (default: maxvit_large_tf_512.in1k)
         stage_channels: Channel dims for stages (default: determined dynamically)
         projection_dim: Output dim for contrastive projection
         use_contrastive: Whether to include contrastive branch
         use_multitask: Whether to include multi-task branch
-        pretrained: Whether to load ImageNet pretrained weights (with offline fallback)
+        pretrained: Whether to load ImageNet pretrained weights (aborts when weights cannot be loaded unless pretrained_fallback='warn')
         drop_path_rate: Stochastic depth rate
         grad_checkpointing: Whether to enable gradient checkpointing
     """
 
     def __init__(self,
-                 backbone_name='maxvit_large_tf_512.in21k_ft_in1k',
+                 backbone_name='maxvit_large_tf_512.in1k',
                  stage_channels=None,
                  projection_dim=128,
                  use_contrastive=True,
                  use_multitask=True,
                  pretrained=True,
+                 pretrained_fallback='strict',
                  drop_path_rate=0.1,
                  grad_checkpointing=True):
         super().__init__()
         self.use_contrastive = use_contrastive
         self.use_multitask = use_multitask
 
+        self.pretrained_ok = bool(pretrained)
         try:
             self.backbone = timm.create_model(
                 backbone_name,
@@ -190,8 +193,16 @@ class SSLModel(nn.Module):
                 num_classes=0,
                 drop_path_rate=drop_path_rate,
             )
-        except Exception:
-            if pretrained:
+        except Exception as exc:
+            if not pretrained:
+                raise
+            msg = (f"Pretrained weights for '{backbone_name}' could not be loaded "
+                   f"({type(exc).__name__}: {exc}). Continuing would silently pretrain "
+                   f"from a randomly initialised backbone. Fix the offline HF cache, or "
+                   f"pass pretrained_fallback='warn' to allow it deliberately.")
+            if str(pretrained_fallback).lower() == 'warn':
+                warnings.warn(msg)
+                self.pretrained_ok = False
                 self.backbone = timm.create_model(
                     backbone_name,
                     pretrained=False,
@@ -199,7 +210,7 @@ class SSLModel(nn.Module):
                     drop_path_rate=drop_path_rate,
                 )
             else:
-                raise
+                raise RuntimeError(msg) from exc
 
         if grad_checkpointing and hasattr(self.backbone, 'set_grad_checkpointing'):
             self.backbone.set_grad_checkpointing(True)
