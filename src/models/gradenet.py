@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
+import warnings
 
 from src.models.wavelet_gate import WaveletGate
 from src.models.mixstyle import MixStyle
@@ -69,7 +70,7 @@ class GradeNet(nn.Module):
     def __init__(self, cfg: dict):
         super().__init__()
         self.cfg = cfg
-        backbone_name = str(cfg.get('backbone', 'maxvit_large_tf_512.in21k_ft_in1k'))
+        backbone_name = str(cfg.get('backbone', 'maxvit_large_tf_512.in1k'))
         drop_path_rate = float(cfg.get('drop_path', 0.3))
         pretrained = cfg.get('pretrained', True)
 
@@ -77,14 +78,23 @@ class GradeNet(nn.Module):
         if cfg.get('img_size_arg'):
             kw['img_size'] = cfg['img_size_arg']
 
+        self.pretrained_ok = bool(pretrained)
         try:
             self.backbone = timm.create_model(backbone_name, **kw)
-        except Exception:
-            if pretrained:
+        except Exception as exc:
+            if not pretrained:
+                raise
+            msg = (f"Pretrained weights for '{backbone_name}' could not be loaded "
+                   f"({type(exc).__name__}: {exc}). Continuing would silently train "
+                   f"a randomly initialised backbone. Fix the offline HF cache, or set "
+                   f"pretrained_fallback=warn to allow it deliberately.")
+            if str(cfg.get('pretrained_fallback', 'strict')).lower() == 'warn':
+                warnings.warn(msg)
+                self.pretrained_ok = False
                 kw['pretrained'] = False
                 self.backbone = timm.create_model(backbone_name, **kw)
             else:
-                raise
+                raise RuntimeError(msg) from exc
 
         if cfg.get('grad_checkpointing') and hasattr(self.backbone, 'set_grad_checkpointing'):
             self.backbone.set_grad_checkpointing(True)
