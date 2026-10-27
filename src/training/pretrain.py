@@ -101,14 +101,17 @@ def run_pretrain(cfg: dict, kind: str):
             drop_last=True
         )
 
-        backbone_name = str(cfg.get('ssl_backbone') or cfg.get('backbone', 'maxvit_large_tf_512.in21k_ft_in1k'))
+        backbone_name = str(cfg.get('ssl_backbone') or cfg.get('backbone', 'maxvit_large_tf_512.in1k'))
         model = SSLModel(
             backbone_name=backbone_name,
             projection_dim=int(cfg.get('ssl_projection_dim', 128)),
             use_contrastive=bool(cfg.get('ssl_use_contrastive', True)),
             use_multitask=bool(cfg.get('ssl_use_multitask', True)),
             grad_checkpointing=bool(cfg.get('grad_checkpointing', False)),
+            pretrained_fallback=str(cfg.get('pretrained_fallback', 'strict')),
         )
+        if not getattr(model, 'pretrained_ok', True):
+            logger.warning("BACKBONE RANDOMLY INITIALISED - pretrained weights were not loaded")
 
         trainer = SSLTrainer(
             model=model,
