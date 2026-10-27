@@ -267,6 +267,8 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     # 2. Model setup
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = GradeNet(cfg).to(device)
+    if not getattr(model, 'pretrained_ok', True):
+        logger.warning("BACKBONE RANDOMLY INITIALISED - pretrained weights were not loaded")
 
     decay = float(cfg.get('ema_decay', 0.999))
     ema = ModelEMA(model, decay) if decay > 0.0 else None
@@ -293,8 +295,12 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     freeze_epochs = int(cfg.get('freeze_epochs', 1))
     joint_w = float(cfg.get('joint_w', 0.5))
 
-    total_steps = len(train_loader) * epochs
-    warmup_steps = len(train_loader) * warmup_epochs
+    # The scheduler advances once per OPTIMIZER step, which happens every
+    # grad_accum micro-batches, so schedule over optimizer steps, not
+    # micro-batches. Identical to the previous formula when grad_accum == 1.
+    steps_per_epoch = max(1, len(train_loader) // grad_accum)
+    total_steps = steps_per_epoch * epochs
+    warmup_steps = steps_per_epoch * warmup_epochs
     scheduler = build_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 
     best_val_qwk = -999.0
@@ -403,6 +409,7 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
             'val_qwk': val_qwk,
             'val_bin_auroc': val_bin_auroc,
         })
+        os.makedirs(curves_dir, exist_ok=True)
         pd.DataFrame(curve_rows).to_csv(curve_csv_path, index=False)
 
         logger.info(
@@ -422,6 +429,8 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
             }
 
             # Save best checkpoint
+            os.makedirs(ckpt_dir, exist_ok=True)
+            os.makedirs(res_dir, exist_ok=True)
             torch.save(eval_model.state_dict(), ckpt_path)
             with open(val_metrics_path, 'w') as f_vm:
                 json.dump(best_metrics, f_vm, indent=2)
