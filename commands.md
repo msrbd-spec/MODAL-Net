@@ -10,7 +10,7 @@ This guide mirrors section S10 of `agent_context/MODAL_PART2.md`. If the agent r
 
 ### 1A. Environment
 ```bash
-conda activate modal                      # or: source .venv/bin/activate   (see the header of requirements.txt)
+source .venv/bin/activate   (see the header of requirements.txt)
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 python tools/env_report.py                # compare versions with the header of requirements.txt; check the MaxViT/ConvNeXt/EfficientNet ids can be created offline
 pytest -q                                 # fast checks (splits, metrics, selection guard); stop if anything fails
@@ -169,8 +169,8 @@ python main.py --mode phase_select --phase phase4_label_loss --reference @phase3
 ```bash
 # [WAIT] WINNER.txt of phase4 exists. [PAR]
 python main.py --mode experiment --phase phase5_architecture --tag p5_wghr       --inherit @phase4_label_loss --set use_wghr=true
-python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
-python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4_label_loss --set backbone=tf_efficientnetv2_m.in21k_ft_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k_384 pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4_label_loss --set backbone=efficientnetv2_rw_m.agc_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
 # [WAIT for p5_convnextv2 and p5_effnetv2]
 python main.py --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4_label_loss,p5_convnextv2,p5_effnetv2 --set winner_eligible=false
 # [WAIT] all finished
