@@ -112,6 +112,8 @@ def validate_cfg(c):
         f"tta must be 'none', 'flip', or 'flip_rot', got {c.get('tta')}"
     assert c.get('recalibrate', 'none') in ('none', 'devcut'), \
         f"recalibrate must be 'none' or 'devcut', got {c.get('recalibrate')}"
+    assert str(c.get('pretrained_fallback', 'strict')).lower() in ('strict', 'warn'), \
+        f"pretrained_fallback must be 'strict' or 'warn', got {c.get('pretrained_fallback')}"
 
     # XAI validations
     if 'xai_methods' in c and c['xai_methods'] is not None:
