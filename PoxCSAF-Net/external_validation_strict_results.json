@@ -1,0 +1,194 @@
+{
+  "checkpoints_used": [
+    "Fold_1",
+    "Fold_2",
+    "Fold_3",
+    "Fold_4",
+    "Fold_5"
+  ],
+  "backbone_layout_per_fold": {
+    "Fold_1": "torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN",
+    "Fold_2": "torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN",
+    "Fold_3": "torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN",
+    "Fold_4": "torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN",
+    "Fold_5": "torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN"
+  },
+  "strict_four_output": {
+    "n": 570,
+    "accuracy": 0.8771929824561403,
+    "ci_low": 0.8476947622864169,
+    "ci_high": 0.9016409428977313,
+    "macro_precision": 0.8876479076479077,
+    "macro_recall": 0.8747050544012936,
+    "macro_f1": 0.876479646345092,
+    "per_class": {
+      "Chickenpox": {
+        "precision": 0.7733333333333333,
+        "recall": 0.93048128342246,
+        "f1": 0.8446601941747572,
+        "support": 187
+      },
+      "Measles": {
+        "precision": 1.0,
+        "recall": 0.945,
+        "f1": 0.9717223650385605,
+        "support": 200
+      },
+      "Monkeypox": {
+        "precision": 0.8896103896103896,
+        "recall": 0.7486338797814208,
+        "f1": 0.8130563798219584,
+        "support": 183
+      }
+    },
+    "confusion_matrix_rows_true_cols_pred": [
+      [
+        174,
+        0,
+        0,
+        13
+      ],
+      [
+        5,
+        2,
+        189,
+        4
+      ],
+      [
+        46,
+        0,
+        0,
+        137
+      ]
+    ],
+    "confusion_matrix_columns": [
+      "Chickenpox",
+      "Healthy",
+      "Measles",
+      "Monkeypox"
+    ],
+    "healthy_prediction_rate": 0.0035087719298245615
+  },
+  "restricted_uncorrected": {
+    "n": 570,
+    "accuracy": 0.8807017543859649,
+    "ci_low": 0.851509859022199,
+    "ci_high": 0.9047964108613367,
+    "macro_precision": 0.8876479076479077,
+    "macro_recall": 0.8780383877346268,
+    "macro_f1": 0.8782328903944722,
+    "per_class": {
+      "Chickenpox": {
+        "precision": 0.7733333333333333,
+        "recall": 0.93048128342246,
+        "f1": 0.8446601941747572,
+        "support": 187
+      },
+      "Measles": {
+        "precision": 1.0,
+        "recall": 0.955,
+        "f1": 0.9769820971867008,
+        "support": 200
+      },
+      "Monkeypox": {
+        "precision": 0.8896103896103896,
+        "recall": 0.7486338797814208,
+        "f1": 0.8130563798219584,
+        "support": 183
+      }
+    },
+    "confusion_matrix_rows_true_cols_pred": [
+      [
+        174,
+        0,
+        0,
+        13
+      ],
+      [
+        5,
+        0,
+        191,
+        4
+      ],
+      [
+        46,
+        0,
+        0,
+        137
+      ]
+    ],
+    "confusion_matrix_columns": [
+      "Chickenpox",
+      "Healthy",
+      "Measles",
+      "Monkeypox"
+    ],
+    "healthy_prediction_rate": 0.0
+  },
+  "restricted_score_adjusted": {
+    "n": 570,
+    "accuracy": 0.887719298245614,
+    "ci_low": 0.8591620732092391,
+    "ci_high": 0.9110853260730714,
+    "macro_precision": 0.8895112111830379,
+    "macro_recall": 0.8855581368165746,
+    "macro_f1": 0.8861093784910831,
+    "per_class": {
+      "Chickenpox": {
+        "precision": 0.8038277511961722,
+        "recall": 0.8983957219251337,
+        "f1": 0.8484848484848485,
+        "support": 187
+      },
+      "Measles": {
+        "precision": 1.0,
+        "recall": 0.955,
+        "f1": 0.9769820971867008,
+        "support": 200
+      },
+      "Monkeypox": {
+        "precision": 0.8647058823529412,
+        "recall": 0.8032786885245902,
+        "f1": 0.8328611898016998,
+        "support": 183
+      }
+    },
+    "confusion_matrix_rows_true_cols_pred": [
+      [
+        168,
+        0,
+        0,
+        19
+      ],
+      [
+        5,
+        0,
+        191,
+        4
+      ],
+      [
+        36,
+        0,
+        0,
+        147
+      ]
+    ],
+    "confusion_matrix_columns": [
+      "Chickenpox",
+      "Healthy",
+      "Measles",
+      "Monkeypox"
+    ],
+    "healthy_prediction_rate": 0.0
+  },
+  "healthy_prediction_rate_by_true_class": {
+    "Chickenpox": 0.0,
+    "Measles": 0.01,
+    "Monkeypox": 0.0
+  },
+  "mean_healthy_probability_by_true_class": {
+    "Chickenpox": 0.00038643681909888983,
+    "Measles": 0.028999116271734238,
+    "Monkeypox": 0.0023930524475872517
+  }
+}
