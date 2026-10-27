@@ -17,7 +17,8 @@ paths:
     labels_csv: datasets/EyePACS/trainLabels.csv/trainLabels.csv
     lesion_labels: datasets/EyePACS/lesion_labels
 
-backbone: maxvit_large_tf_512.in21k_ft_in1k
+backbone: maxvit_large_tf_512.in1k
+pretrained_fallback: strict  # strict = abort if pretrained weights cannot be loaded; warn = allow random init on purpose
 img_size: 512
 img_size_arg: null
 num_classes: 5
@@ -28,8 +29,8 @@ aug: basic
 epochs: 30
 warmup_epochs: 2
 patience: 8
-batch_size: 16
-grad_accum: 1
+batch_size: 8
+grad_accum: 2
 num_workers: 8
 grad_checkpointing: false
 seed: 0
