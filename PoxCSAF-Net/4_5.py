@@ -18,6 +18,10 @@ report accuracy and macro-recall as the headline numbers (the classes are balanc
 
 Run from the folder that contains datasets/ and pipeline_v2_single_gpu/ .   Takes a few minutes on one GPU.
 """
+# INSTRUCTION BEFORE RUNNING
+# EXTERNAL_DIR = 'outputs/overlap_review_recheck2/external_clean/'   # jei folder e 454 ta image ache, oita dio
+# OUT_DIR      = 'outputs/external_validation_strict_clean'
+
 import os, glob, json, math, warnings
 import numpy as np
 import pandas as pd
