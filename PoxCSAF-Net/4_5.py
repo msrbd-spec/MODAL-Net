@@ -139,22 +139,31 @@ class CrossScaleAttentionHead(nn.Module):
         return self.head(fused)
 
 class ConvNeXtV2MSAFv5(nn.Module):
+    """backend='timm' -> timm convnextv2_tiny (keys stage0.blocks.*, has GRN).
+       backend='tv'   -> torchvision convnext_tiny, ConvNeXt V1 (keys stage0.0.block.*, ds1..ds3, no GRN).
+       The training code silently falls back to 'tv' when timm cannot load its pretrained weights offline,
+       so the backend is detected from the checkpoint instead of being assumed."""
     DIMS = [96, 192, 384, 768]
-    def __init__(self, num_classes=NUM_CLASSES):
+    def __init__(self, num_classes=NUM_CLASSES, backend='timm'):
         super().__init__()
-        try:
-            import timm
+        if backend == 'timm':
+            try:
+                import timm
+            except ImportError:
+                raise SystemExit('The checkpoint uses the timm ConvNeXtV2 layout but timm is not installed. Run: pip install timm')
             bb = timm.create_model('convnextv2_tiny.fcmae_ft_in22k_in1k', pretrained=False)
             self._backend = 'timm'
             self.stem = bb.stem
             self.stage0, self.stage1, self.stage2, self.stage3 = bb.stages[0], bb.stages[1], bb.stages[2], bb.stages[3]
-        except Exception:
+        elif backend == 'tv':
             bb = models.convnext_tiny(weights=None)
             self._backend = 'tv'
             self.stem = bb.features[0]
             self.ds1, self.ds2, self.ds3 = bb.features[2], bb.features[4], bb.features[6]
             self.stage0, self.stage1 = bb.features[1], bb.features[3]
             self.stage2, self.stage3 = bb.features[5], bb.features[7]
+        else:
+            raise ValueError(f'unknown backend {backend}')
         dims = self.DIMS
         self.attn0, self.attn1 = ECABlock(dims[0]), ECABlock(dims[1])
         self.attn2 = CBAMBlock(dims[2], reduction=max(4, dims[2] // 16))
@@ -172,6 +181,30 @@ class ConvNeXtV2MSAFv5(nn.Module):
         return s1, s2, s3
     def forward(self, x):
         return self.head(list(self._stages(x)))
+
+
+def load_state_dict_file(path):
+    sd = torch.load(path, map_location='cpu')
+    if isinstance(sd, dict) and 'state_dict' in sd:
+        sd = sd['state_dict']
+    return {(k[7:] if k.startswith('module.') else k): v for k, v in sd.items()}
+
+def detect_backend(keys):
+    """Returns ('timm' | 'tv' | None, has_grn) from the parameter names of a checkpoint."""
+    keys = list(keys)
+    has_grn = any('grn' in k.lower() for k in keys)
+    if any(k.startswith('stage0.blocks.') for k in keys):
+        return 'timm', has_grn
+    if any(k.startswith('ds1.') for k in keys) or any(k.startswith('stage0.0.') for k in keys):
+        return 'tv', has_grn
+    return None, has_grn
+
+def describe_backend(backend, has_grn):
+    if backend == 'timm':
+        return 'timm ConvNeXtV2-Tiny layout' + (' (GRN present)' if has_grn else ' (no GRN keys found)')
+    if backend == 'tv':
+        return 'torchvision ConvNeXt-Tiny layout, ConvNeXt V1' + (' (GRN present)' if has_grn else ', no GRN')
+    return 'unrecognized layout'
 
 
 # ═══ Pure analysis helpers (numpy only) ═══
@@ -229,20 +262,25 @@ if __name__ == '__main__':
         hits = glob.glob(os.path.join(MAIN_OUT_DIR, '**', f'{fold}_{RUN_NAME}_fl_best.pt'), recursive=True)
         return hits[0] if hits else None
 
-    probs_per_fold, used = [], []
+    probs_per_fold, used, layouts = [], [], {}
     for fold in FOLDS:
         ckpt = find_checkpoint(fold)
         if ckpt is None:
             print(f'[warning] no checkpoint found for {fold}, skipping it')
             continue
-        model = ConvNeXtV2MSAFv5(NUM_CLASSES).to(DEVICE)
-        sd = torch.load(ckpt, map_location=DEVICE)
-        sd = {(k[7:] if k.startswith('module.') else k): v for k, v in sd.items()}
-        res = model.load_state_dict(sd, strict=False)
-        if res.missing_keys:
-            raise RuntimeError(f'{fold}: checkpoint is missing weights {res.missing_keys[:5]} ...')
-        if res.unexpected_keys:
-            print(f'[warning] {fold}: unexpected keys ignored {res.unexpected_keys[:5]}')
+        sd = load_state_dict_file(ckpt)
+        backend, has_grn = detect_backend(sd.keys())
+        print(f'{fold}: {ckpt}\n        backbone layout: {describe_backend(backend, has_grn)}')
+        if backend is None:
+            print('        first keys:', list(sd.keys())[:8])
+            raise SystemExit('Could not recognize the backbone layout of this checkpoint. Send me the keys printed above.')
+        layouts[fold] = describe_backend(backend, has_grn)
+        model = ConvNeXtV2MSAFv5(NUM_CLASSES, backend=backend).to(DEVICE)
+        try:
+            model.load_state_dict(sd, strict=True)
+        except RuntimeError as e:
+            print(str(e)[:1800])
+            raise SystemExit(f'{fold}: strict load failed even with the detected layout. Send me the message printed above.')
         model.eval()
         chunks = []
         with torch.no_grad():
@@ -250,9 +288,10 @@ if __name__ == '__main__':
                 chunks.append(torch.softmax(model(imgs.to(DEVICE)), dim=1).cpu().numpy())
         probs_per_fold.append(np.concatenate(chunks))
         used.append(fold)
-        print(f'{fold}: loaded {ckpt}')
         del model
         torch.cuda.empty_cache()
+    if len(set(layouts.values())) > 1:
+        print(f'[warning] the checkpoints do not share one backbone layout: {layouts}')
     if not probs_per_fold:
         raise SystemExit('No checkpoints found. Check MAIN_OUT_DIR and RUN_NAME.')
     if len(used) < 5:
@@ -260,7 +299,7 @@ if __name__ == '__main__':
 
     P4 = np.mean(probs_per_fold, axis=0)
     strict, restricted, adjusted = build_predictions(P4)
-    results = {'checkpoints_used': used,
+    results = {'checkpoints_used': used, 'backbone_layout_per_fold': layouts,
                'strict_four_output': summarize(y4, strict),
                'restricted_uncorrected': summarize(y4, restricted),
                'restricted_score_adjusted': summarize(y4, adjusted)}
@@ -302,3 +341,21 @@ if __name__ == '__main__':
     with open(os.path.join(OUT_DIR, 'external_validation_strict_results.json'), 'w') as f:
         json.dump(results, f, indent=2)
     print(f'\nSaved: {OUT_DIR}/external_validation_strict_results.json and external_predictions.csv')
+    # ── backbone audit of the other checkpoints of the study (no loading into a model, only key inspection) ──
+    INSPECT = ['outputs/run3_dirichlet/**/*_best.pt', 'outputs/fedper_v2_personalized/**/*shared_best.pt',
+               'outputs/fedavg_vs_fedprox_controlled/**/*_best.pt', 'outputs/dp_sgd*/**/*_best.pt']
+    print('\nBackbone layout of the other trained checkpoints (should match the layout printed above):')
+    for pat in INSPECT:
+        files = sorted(glob.glob(pat, recursive=True))
+        counts = {}
+        for fpath in files:
+            try:
+                b, g = detect_backend(load_state_dict_file(fpath).keys())
+            except Exception as e:
+                b, g = None, False
+            counts[describe_backend(b, g)] = counts.get(describe_backend(b, g), 0) + 1
+        print(f'   {pat:<58} {counts if counts else "no files found"}')
+    if any(v.startswith('torchvision') for v in layouts.values()):
+        print('\n!!! The main-pipeline checkpoints use the torchvision ConvNeXt-Tiny layout (ConvNeXt V1, no GRN), not the timm ConvNeXtV2'
+              '\n!!! described in the paper. The training code falls back to torchvision silently when the timm weights cannot be loaded offline.'
+              '\n!!! Send me this output before editing the paper.')
