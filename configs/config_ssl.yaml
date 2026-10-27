@@ -10,7 +10,7 @@ ssl_img_size: 512
 ssl_mask_size: 128
 
 # Model
-ssl_backbone: "maxvit_large_tf_512.in21k_ft_in1k"
+ssl_backbone: "maxvit_large_tf_512.in1k"
 ssl_projection_dim: 128
 
 # Training
