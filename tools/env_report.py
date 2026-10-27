@@ -64,22 +64,41 @@ def main():
         except ImportError:
             print(f"  {disp_name:<20}: NOT INSTALLED")
 
-    # 4. Timm Backbone Creation (offline verification with pretrained=False)
+    # 4. Backbone instantiation + offline pretrained-weight availability (preflight)
+    import os
     import timm
-    backbone_ids = [
-        'maxvit_large_tf_512.in21k_ft_in1k',
-        'convnextv2_large.fcmae_ft_in22k_in1k',
-        'tf_efficientnetv2_m.in21k_ft_in1k',
-    ]
+    backbone_ids = []
+    for cfg_file in ('configs/config.yaml', 'configs/config_ssl.yaml'):
+        if os.path.isfile(cfg_file):
+            with open(cfg_file) as fh:
+                c = yaml.safe_load(fh) or {}
+            for key in ('backbone', 'ssl_backbone'):
+                b = c.get(key)
+                if b and str(b) not in backbone_ids:
+                    backbone_ids.append(str(b))
+    hub = os.path.join(os.environ.get('HF_HOME', os.path.expanduser('~/.cache/huggingface')), 'hub')
 
-    print("\nTimm Backbone Instantiation (pretrained=False, offline mode):")
+    print("\nBackbone instantiation and offline pretrained-weight availability:")
+    missing = []
     for b_id in backbone_ids:
+        cache_dir = os.path.join(hub, 'models--timm--' + b_id.replace('/', '--'))
+        cached_weights = []
+        for root, _dirs, files in os.walk(cache_dir):
+            cached_weights += [x for x in files if x.endswith(('.safetensors', '.bin'))]
         try:
             m = timm.create_model(b_id, pretrained=False, num_classes=0)
             n_params = sum(p.numel() for p in m.parameters()) / 1e6
-            print(f"  [OK] {b_id:<38} ({n_params:.1f}M params)")
+            arch = 'arch OK ({:.1f}M params)'.format(n_params)
         except Exception as e:
-            print(f"  [FAIL] {b_id:<36}: {e}")
+            arch = 'ARCH FAIL: {}'.format(e)
+        if cached_weights:
+            tag = 'pretrained weights cached'
+        else:
+            tag = 'NO CACHED WEIGHTS -> strict guard will abort (or random init if warn)'
+            missing.append(b_id)
+        print('  {:<44}: {}; {}'.format(b_id, arch, tag))
+    if missing:
+        print('\n  WARNING: no offline weights for: ' + ', '.join(missing))
 
     print("=" * 70)
 
