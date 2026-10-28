@@ -79,7 +79,7 @@ DP_RUN_NAME = 'FL_Run2_Heterogeneous'
 DP_FOLDS    = ['Fold_1', 'Fold_3', 'Fold_5']
 DP_EPSILONS = [None, 12.0, 8.0]          # None = non-private reference
 TARGET_DELTA  = 1e-5
-MAX_GRAD_NORM = 1.0
+MAX_GRAD_NORM = 2.0
 ACCOUNTANT    = 'rdp'
 EPS_TOLERANCE = 0.01
 
@@ -90,14 +90,14 @@ IMAGE_SIZE  = 384
 MEAN, STD   = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
 BATCH_SIZE  = 16
 NUM_WORKERS = 4
-LR_BACKBONE, LR_ATTN, LR_HEAD = 3e-5, 1e-4, 2e-4
+LR_BACKBONE, LR_ATTN, LR_HEAD = 1e-5, 3e-4, 1e-3
 WEIGHT_DECAY = 2e-4
 MSAF_DIM, GEM_P, DROP_PATH = 256, 3.0, 0.10
 FOCAL_GAMMA = 2.0
 TEST_COUNTS = np.array([42.0, 94.0, 35.0, 116.0])
 _inv = 1.0 / (TEST_COUNTS + 1e-6)
 FOCAL_ALPHA = (_inv / _inv.sum()).tolist()
-FL_ROUNDS, LOCAL_EPOCHS, PATIENCE = 50, 3, 18
+FL_ROUNDS, LOCAL_EPOCHS, PATIENCE = 100, 3, 20
 IMG_EXT = ('.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tif', '.tiff')
 
 PRIVACY_UNIT = ('one original photograph (unique pre-augmentation image). Offline augmented copies are excluded, '
