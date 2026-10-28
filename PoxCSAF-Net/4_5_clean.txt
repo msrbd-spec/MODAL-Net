@@ -1,0 +1,61 @@
+Device: cuda
+External images: 454  per class: {'Chickenpox': 151, 'Measles': 181, 'Monkeypox': 122}
+Fold_1: pipeline_v2_single_gpu/Fold_1/FL_Run2_Heterogeneous/fl/Fold_1_FL_Run2_Heterogeneous_fl_best.pt
+        backbone layout: torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN
+Fold_2: pipeline_v2_single_gpu/Fold_2/FL_Run2_Heterogeneous/fl/Fold_2_FL_Run2_Heterogeneous_fl_best.pt
+        backbone layout: torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN
+Fold_3: pipeline_v2_single_gpu/Fold_3/FL_Run2_Heterogeneous/fl/Fold_3_FL_Run2_Heterogeneous_fl_best.pt
+        backbone layout: torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN
+Fold_4: pipeline_v2_single_gpu/Fold_4/FL_Run2_Heterogeneous/fl/Fold_4_FL_Run2_Heterogeneous_fl_best.pt
+        backbone layout: torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN
+Fold_5: pipeline_v2_single_gpu/Fold_5/FL_Run2_Heterogeneous/fl/Fold_5_FL_Run2_Heterogeneous_fl_best.pt
+        backbone layout: torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN
+
+================ EXTERNAL VALIDATION, THREE VARIANTS (same images, same checkpoints) ================
+Variant                          Acc              95% CI   MacroF1  Healthy-pred
+Strict four-output             0.852   [0.817, 0.882]     0.837          0.4%
+Restricted, uncorrected        0.857   [0.822, 0.886]     0.839          0.0%
+Restricted, score-adjusted     0.859   [0.824, 0.888]     0.845          0.0%
+
+Share of external disease images predicted as Healthy (strict), by true class:
+   Chickenpox     0.0%   (mean Healthy probability 0.000)
+   Measles        1.1%   (mean Healthy probability 0.032)
+   Monkeypox      0.0%   (mean Healthy probability 0.003)
+
+strict_four_output: per-class precision / recall / F1 and confusion matrix (rows true, columns ['Chickenpox', 'Healthy', 'Measles', 'Monkeypox'])
+   Chickenpox   P=0.742 R=0.914 F1=0.819 (n=151)
+   Measles      P=1.000 R=0.939 F1=0.969 (n=181)
+   Monkeypox    P=0.823 R=0.648 F1=0.725 (n=122)
+   Chickenpox   [138, 0, 0, 13]
+   Measles      [5, 2, 170, 4]
+   Monkeypox    [43, 0, 0, 79]
+
+restricted_uncorrected: per-class precision / recall / F1 and confusion matrix (rows true, columns ['Chickenpox', 'Healthy', 'Measles', 'Monkeypox'])
+   Chickenpox   P=0.742 R=0.914 F1=0.819 (n=151)
+   Measles      P=1.000 R=0.950 F1=0.975 (n=181)
+   Monkeypox    P=0.823 R=0.648 F1=0.725 (n=122)
+   Chickenpox   [138, 0, 0, 13]
+   Measles      [5, 0, 172, 4]
+   Monkeypox    [43, 0, 0, 79]
+
+restricted_score_adjusted: per-class precision / recall / F1 and confusion matrix (rows true, columns ['Chickenpox', 'Healthy', 'Measles', 'Monkeypox'])
+   Chickenpox   P=0.763 R=0.874 F1=0.815 (n=151)
+   Measles      P=1.000 R=0.950 F1=0.975 (n=181)
+   Monkeypox    P=0.789 R=0.705 F1=0.745 (n=122)
+   Chickenpox   [132, 0, 0, 19]
+   Measles      [5, 0, 172, 4]
+   Monkeypox    [36, 0, 0, 86]
+
+Reproduction check against the paper (88.1 / 0.878 and 88.8 / 0.886): DIFFERS, tell me the printed numbers before editing the paper
+
+Saved: outputs/external_validation_strict_clean/external_validation_strict_results.json and external_predictions.csv
+
+Backbone layout of the other trained checkpoints (should match the layout printed above):
+   outputs/run3_dirichlet/**/*_best.pt                        no files found
+   outputs/fedper_v2_personalized/**/*shared_best.pt          {'torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN': 10}
+   outputs/fedavg_vs_fedprox_controlled/**/*_best.pt          {'torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN': 10}
+   outputs/dp_sgd*/**/*_best.pt                               {'torchvision ConvNeXt-Tiny layout, ConvNeXt V1, no GRN': 8}
+
+!!! The main-pipeline checkpoints use the torchvision ConvNeXt-Tiny layout (ConvNeXt V1, no GRN), not the timm ConvNeXtV2
+!!! described in the paper. The training code falls back to torchvision silently when the timm weights cannot be loaded offline.
+!!! Send me this output before editing the paper.
