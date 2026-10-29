@@ -187,6 +187,8 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
                 'oof_qwk': float(exp_summaries[tag].get('oof_qwk', 0.0)),
                 'extdev_qwk': float(exp_summaries[tag].get('extdev_qwk', 0.0)),
                 'extdev_bin_auroc': float(exp_summaries[tag].get('extdev_bin_auroc', 0.0)),
+                'oof_qwk_full': float(_qwk_fn(y_oof_ref, P_oof_ref)),
+                'extdev_qwk_full': float(_qwk_fn(y_dev_ref, P_dev_ref)),
             })
             continue
 
@@ -210,8 +212,8 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
         # Paired bootstrap
         d_qwk, ci_qwk, p_qwk = paired_bootstrap(y_oof_ref, P_oof_exp, P_oof_ref, _qwk_fn, B=10000, seed=0)
         d_auroc, _, _ = paired_bootstrap(y_oof_ref, P_oof_exp, P_oof_ref, _bin_auroc_fn, B=2000, seed=0)
-        d_dev_qwk, _, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _qwk_fn, B=2000, seed=0)
-        d_dev_mild, _, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _mild_rec_fn, B=2000, seed=0)
+        d_dev_qwk, ci_dev_qwk, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _qwk_fn, B=2000, seed=0)
+        d_dev_mild, ci_dev_mild, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _mild_rec_fn, B=2000, seed=0)
 
         p_values_for_holm.append(p_qwk)
         eligible = str(exp_summaries[tag].get('winner_eligible', 'true')).lower() != 'false'
@@ -225,11 +227,15 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
             'raw_p': p_qwk,
             'd_bin_auroc': d_auroc,
             'd_extdev_qwk': d_dev_qwk,
+            'd_extdev_qwk_ci_lo': ci_dev_qwk[0],
             'd_extdev_mild_recall': d_dev_mild,
+            'd_extdev_mild_ci_lo': ci_dev_mild[0],
             'winner_eligible': eligible,
             'oof_qwk': float(exp_summaries[tag].get('oof_qwk', 0.0)),
             'extdev_qwk': float(exp_summaries[tag].get('extdev_qwk', 0.0)),
             'extdev_bin_auroc': float(exp_summaries[tag].get('extdev_bin_auroc', 0.0)),
+            'oof_qwk_full': float(_qwk_fn(y_oof_exp, P_oof_exp)),
+            'extdev_qwk_full': float(_qwk_fn(y_dev_exp, P_dev_exp)),
         })
 
     # Apply Holm step-down correction across all candidate experiments in the phase
@@ -257,6 +263,17 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
                     r['decision'] = 'ADOPT'
                 else:
                     r['decision'] = 'REJECT'
+            elif phase == 'phase2b_preprocess':
+                # Pre-registered JOINT rule (MODAL_PART2 S8): preprocessing parity is judged on
+                # OOF QWK *and* Messidor-DEV QWK / Mild recall together, because the point of the
+                # change is train<->test preprocessing consistency across datasets, which shows up
+                # externally while internal OOF QWK stays flat.
+                if (r['d_extdev_qwk_ci_lo'] > 0.0 and r['d_extdev_qwk'] > 0.05
+                        and r['d_extdev_mild_ci_lo'] > 0.0
+                        and r['d_oof_qwk'] >= -0.005 and r['d_bin_auroc'] >= -0.005):
+                    r['decision'] = 'ADOPT'
+                else:
+                    r['decision'] = 'REJECT'
             # ADOPT: 95% CI of primary gain excludes 0 (ci_lo > 0) AND guard tolerance met
             # Guard tolerance: referable AUROC drop >= -0.005, OOF QWK drop >= -0.005
             elif r['ci_lo'] > 0.0 and r['d_bin_auroc'] >= -0.005 and r['d_oof_qwk'] >= -0.005:
@@ -274,25 +291,50 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
         if (r['decision'] in ['REFERENCE', 'ADOPT', 'TENTATIVE']) and r['winner_eligible']
     ]
 
+    carried_reference = False
     if not candidates:
-        # Fallback to reference
+        # Fallback to reference (only possible when the reference is a member of this phase)
         candidates = [r for r in records if r['is_ref']]
+
+    if not candidates:
+        # Every in-phase experiment was REJECTED and the reference lives in ANOTHER phase
+        # (--reference @phaseX resolves to a tag under results/phaseX/), so there is no is_ref
+        # row here to fall back to. Carry the reference forward unchanged: find_exp() globs
+        # results/phase*/, so later phases resolve this cross-phase winner tag fine.
+        candidates = [{
+            'experiment': ref_tag,
+            'is_ref': True,
+            'decision': 'REFERENCE',
+            'd_oof_qwk': 0.0,
+            'd_bin_auroc': 0.0,
+            'oof_qwk': float(_qwk_fn(y_oof_ref, P_oof_ref)),
+            'extdev_qwk': float(_qwk_fn(y_dev_ref, P_dev_ref)),
+            'oof_qwk_full': float(_qwk_fn(y_oof_ref, P_oof_ref)),
+            'extdev_qwk_full': float(_qwk_fn(y_dev_ref, P_dev_ref)),
+        }]
+        carried_reference = True
+        print(f"phase_select {phase}: no arm met the adoption rule -> carrying the "
+              f"cross-phase reference {ref_tag} forward as this phase's winner")
 
     if phase == 'phase6_domain_gen':
         # Phase 6 uses DEV QWK first, then OOF QWK as a guard (OOF drop <= 0.005)
         valid_candidates = [c for c in candidates if c.get('d_oof_qwk', 0.0) >= -0.005]
         if not valid_candidates:
             valid_candidates = candidates
+        # Rank on full-precision QWK: summary.csv stores 2-dp values, which would turn real
+        # differences into ties silently decided by the AUROC tie-break.
         candidates_sorted = sorted(
             valid_candidates,
-            key=lambda x: (x['extdev_qwk'], x['oof_qwk']),
+            key=lambda x: (x.get('extdev_qwk_full', x.get('extdev_qwk', 0.0)),
+                           x.get('oof_qwk_full', x.get('oof_qwk', 0.0))),
             reverse=True,
         )
     else:
-        # Default: best OOF QWK (ties: referable AUROC)
+        # Default: best OOF QWK (ties: referable AUROC). Full precision, same reason.
         candidates_sorted = sorted(
             candidates,
-            key=lambda x: (x['oof_qwk'], x['d_bin_auroc']),
+            key=lambda x: (x.get('oof_qwk_full', x.get('oof_qwk', 0.0)),
+                           x.get('d_bin_auroc', 0.0)),
             reverse=True,
         )
 
@@ -346,7 +388,10 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
     # Write WINNER.txt: tag on the first line, then a one-line reason
     reason = (
         f"Selected as phase winner: decision={winner_record['decision']}, "
-        f"OOF QWK={winner_record['oof_qwk']:.2f}, DEV QWK={winner_record['extdev_qwk']:.2f}."
+        f"OOF QWK={winner_record.get('oof_qwk', winner_record.get('oof_qwk_full', 0.0)):.4f}, "
+        f"DEV QWK={winner_record.get('extdev_qwk', winner_record.get('extdev_qwk_full', 0.0)):.4f}."
+        + (" No in-phase arm met the adoption rule; the reference is carried forward unchanged."
+           if carried_reference else "")
     )
     with open(winner_txt_path, 'w') as f_win:
         f_win.write(f"{winner_tag}\n{reason}\n")
