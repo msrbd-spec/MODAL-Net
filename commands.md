@@ -269,3 +269,31 @@ python main.py --mode xai --phase phase9_final --tag p9_final_s0 --set xai_top_k
 | `pre_ssl` finishes immediately with "Already completed" | use a new `ssl_save_dir` for each SSL variant |
 | `phase_select` raises about test data | expected guard; do not bypass it |
 | two jobs with the same tag | stop one; delete nothing; re-run the survivor's command to check it resumes cleanly |
+| `results/<phase>/` folder lost while `checkpoints/` survived | do NOT re-run `experiment` (it would retrain every fold); rebuild the artefacts from the checkpoints with section 6A |
+
+### 6A. Rebuilding a lost `results/<phase>/` folder from checkpoints (inference only)
+
+`train_fold` skips a fold only when `checkpoints/<tag>/foldK.pth`, `foldK_val_metrics.json` **and**
+`results/<phase>/<tag>/oof_foldK.npz` all exist (`trainer.py:185`). If a results folder disappears,
+re-running `--mode experiment` therefore silently retrains all five folds. Use `tools/rebuild_oof.py`
+instead, one job per tag of that phase (~8 GPU-min each):
+
+```bash
+phd run -p shr_gpu -ng 1 -GR H100 -l rb_<tag>.txt --   env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1   env/bin/python tools/rebuild_oof.py --tag <tag> --phase <phase>
+```
+
+It loads the config from `checkpoints/<tag>/config_snapshot.yaml`, regenerates every
+`oof_foldK.npz` from `foldK.pth` through the same `evaluate_loader()` path the trainer used (exact,
+not approximate: the checkpoint and its OOF arrays are saved together from the same model object,
+`trainer.py:434-439`), then resumes `run_experiment()`, which skips training and rewrites the
+thresholds, the fitted temperature, the ensemble test/DEV predictions, `per_fold.csv`,
+`summary.csv` and `config.yaml`. Every fold logs `QWK rebuilt=<x> recorded=<y> -> OK|MISMATCH`; the
+merged OOF QWK must also match that tag's entry in `results/all_runs.npz`. When all tags of the
+phase are back, re-run that phase's `phase_select` so `WINNER.txt` and `phase_table.csv` are
+recomputed from the data - never write `WINNER.txt` by hand, later phases resolve `@phase` through it.
+
+Back up after every phase finishes (a tarball costs megabytes, a re-run costs GPU-hours):
+
+```bash
+tar czf /tmp/results_rescue_$(date +%Y%m%d_%H%M).tgz results/ checkpoints/*/config_snapshot.yaml
+```
