@@ -1,4 +1,4 @@
-# way 1:
+# way 1: ***
 Instead of standard conv layers, used Reparameterized convolution (RepConv) and Frequency Aware encoding (MSFCA)
 
 No Bottleneck used here. 
@@ -9,7 +9,7 @@ Stem layers also used RepConv
 Simple addition I→D 
 Low range/local receptive field of CNN layers in I branch 
 
-# way 2
+# way 2 ***
 Instead of standard conv layers, used Large Kernel Depth Wise Convolution and Cross attention in I->D branch
 
 
@@ -59,7 +59,7 @@ PAPPM
 Light BAG used instead pf BAG
 Varifocal as main and aux loss
 
-# way 6
+# way 6 *****
 Modifications: 
 
 Standard Conv layers in Stem 
@@ -70,7 +70,7 @@ PAPPM
 Light BAG used instead pf BAG
 Varifocal as main and aux loss
 
-# way 7 
+# way 7 ***
 Modifications: 
 
 Standard Conv layers in Stem 
@@ -81,7 +81,7 @@ PAPPM
 Light BAG used instead pf BAG
 Varifocal as main and aux loss
 
-# way 8 
+# way 8 *****
 Modifications: 
 
 Standard Conv layers in Stem 
