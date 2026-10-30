@@ -331,12 +331,15 @@ def info_nce_loss(proj1, proj2, temperature=0.07):
     # Concatenate both views: (2B, D)
     projections = torch.cat([proj1, proj2], dim=0)
 
-    # Cosine similarity matrix: (2B, 2B)
-    sim = torch.mm(projections, projections.t()) / temperature
+    # Cosine similarity matrix: (2B, 2B). Kept in fp32 on purpose: under AMP the
+    # projections arrive as fp16, and neither the masking sentinel nor a softmax
+    # over 2B entries is safe in half precision (fp16 -1e9 raises
+    # "value cannot be converted to type at::Half without overflow").
+    sim = (torch.mm(projections, projections.t()) / temperature).float()
 
-    # Mask out self-similarity
+    # Mask out self-similarity (dtype-safe sentinel)
     mask = torch.eye(2 * batch_size, dtype=torch.bool, device=proj1.device)
-    sim.masked_fill_(mask, -1e9)
+    sim = sim.masked_fill(mask, torch.finfo(sim.dtype).min)
 
     # Positive targets: view1[i] pairs with view2[i] (index i + B)
     labels = torch.cat([
