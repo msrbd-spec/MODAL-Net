@@ -268,6 +268,9 @@ python main.py --mode xai --phase phase9_final --tag p9_final_s0 --set xai_top_k
 | fewer than 5 fold checkpoints at test time | re-run the same `experiment` command; do not edit checkpoints by hand |
 | `pre_ssl` finishes immediately with "Already completed" | use a new `ssl_save_dir` for each SSL variant |
 | `phase_select` raises about test data | expected guard; do not bypass it |
+| `--mode pretrain` dies with `Segmentation fault (core dumped)` right after `Config snapshot saved` | pandas' dtype inference segfaults on the `id_b` column of `results/phase0_protocol/audit/duplicates.csv` (pandas 2.3.3 + numpy 2.0.2) - both C and python engines, and even `nrows=5`. Always read that file with `dtype=str`; already fixed in `get_eyepacs_exclude_ids()`. Reproduce: `env/bin/python -c "import pandas as pd; pd.read_csv('results/phase0_protocol/audit/duplicates.csv')"` -> exit 139 |
+| strange `ImportError`/`FileNotFoundError` raised from a *stdlib* module (e.g. `profile`, `config`) | `/tmp` is world-writable and full of other users' scripts: running a script that lives in `/tmp` puts `/tmp` first on `sys.path`, so a foreign `/tmp/profile.py` shadows the stdlib. Never keep or launch project code from `/tmp`; run from the repo with `env/bin/python` |
+| a smoke/short pretraining run wrote `checkpoints/pretrain/eyepacs_sup.pth` | delete that file before launching `p3a_sup`, otherwise the arm loads a backbone with the wrong architecture; the real `--kind eyepacs_sup` run overwrites it anyway |
 | two jobs with the same tag | stop one; delete nothing; re-run the survivor's command to check it resumes cleanly |
 | `results/<phase>/` folder lost while `checkpoints/` survived | do NOT re-run `experiment` (it would retrain every fold); rebuild the artefacts from the checkpoints with section 6A |
 
