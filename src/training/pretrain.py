@@ -30,27 +30,30 @@ except ImportError:
 from src.data.datasets import DRDataset
 from src.data.samplers import SqrtInverseClassSampler
 from src.data.splits import eyepacs_frame
-from src.evaluation.metrics import qwk_score
+from sklearn.metrics import cohen_kappa_score
 from src.losses.losses import soft_ce
 from src.models.gradenet import GradeNet, llrd_groups, probs_from_logits
 from src.models.ssl_model import SSLModel
-from src.training.ema import EMA
+from src.training.ema import ModelEMA
 from src.training.ssl_trainer import SSLTrainer
 from src.utils.logger import get_logger
 
 
 def get_eyepacs_exclude_ids():
-    """Retrieve EyePACS image IDs identified as duplicates during dedup audit."""
+    """Retrieve EyePACS image IDs identified as duplicates during dedup audit.
+
+    NOTE: the audit CSV must be read with dtype=str. Type inference on its
+    id_b column segfaults the pandas tokenizer in this environment
+    (pandas 2.3.3 + numpy 2.0.2), and these ids are opaque strings anyway.
+    """
     dup_csv = os.path.join('results', 'phase0_protocol', 'audit', 'duplicates.csv')
-    exclude = set()
-    if os.path.isfile(dup_csv):
-        df = pd.read_csv(dup_csv)
-        for _, row in df.iterrows():
-            if row.get('dataset_a') == 'EyePACS' and row.get('dataset_b') != 'EyePACS':
-                exclude.add(str(row.get('id_a')))
-            if row.get('dataset_b') == 'EyePACS' and row.get('dataset_a') != 'EyePACS':
-                exclude.add(str(row.get('id_b')))
-    return exclude
+    if not os.path.isfile(dup_csv):
+        return set()
+    df = pd.read_csv(dup_csv, dtype=str)
+    eye_a = (df['dataset_a'] == 'EyePACS') & (df['dataset_b'] != 'EyePACS')
+    eye_b = (df['dataset_b'] == 'EyePACS') & (df['dataset_a'] != 'EyePACS')
+    ids = df.loc[eye_a, 'id_a'].dropna().tolist() + df.loc[eye_b, 'id_b'].dropna().tolist()
+    return {str(i) for i in ids}
 
 
 def run_pretrain(cfg: dict, kind: str):
@@ -206,7 +209,7 @@ def run_pretrain(cfg: dict, kind: str):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     # EMA
-    ema = EMA(model, decay=float(cfg.get('ema_decay', 0.999)))
+    ema = ModelEMA(model, decay=float(cfg.get('ema_decay', 0.999)))
 
     # AMP
     amp_enabled = is_cuda
@@ -235,8 +238,8 @@ def run_pretrain(cfg: dict, kind: str):
         optimizer.zero_grad()
 
         for step, batch in enumerate(train_loader):
-            imgs = batch['img'].to(device, non_blocking=True)
-            targets = batch['target'].to(device, non_blocking=True)
+            imgs = batch['x'].to(device, non_blocking=True)
+            targets = batch['q'].to(device, non_blocking=True)
 
             with autocast_ctx:
                 logits = model(imgs)
@@ -259,7 +262,7 @@ def run_pretrain(cfg: dict, kind: str):
         train_loss /= max(1, n_batches)
 
         # Validation on held-out 2%
-        val_eval_model = ema.eval_model(model)
+        val_eval_model = ema.m
         val_eval_model.eval()
         val_loss = 0.0
         val_batches = 0
@@ -268,8 +271,8 @@ def run_pretrain(cfg: dict, kind: str):
 
         with torch.no_grad():
             for batch in val_loader:
-                imgs = batch['img'].to(device, non_blocking=True)
-                targets = batch['target'].to(device, non_blocking=True)
+                imgs = batch['x'].to(device, non_blocking=True)
+                targets = batch['q'].to(device, non_blocking=True)
                 y_true = batch['y'].numpy()
 
                 with autocast_ctx:
@@ -285,7 +288,8 @@ def run_pretrain(cfg: dict, kind: str):
                 all_targets.extend(y_true)
 
         val_loss /= max(1, val_batches)
-        val_qwk = qwk_score(np.array(all_targets), np.array(all_preds))
+        val_qwk = float(cohen_kappa_score(np.array(all_targets), np.array(all_preds),
+                                          weights='quadratic'))
         elapsed = time.time() - t0
 
         logger.info(
