@@ -7,11 +7,12 @@ detected lesion contours across all 5 diabetic retinopathy grades:
 
 Saves:
   - results/<phase>/<tag>/xai/fig_xai_grid.{png,pdf}
-  - Copied to results/figures/fig16_xai_grid.{png,pdf}
+  - Copied to results/figures/xai_grid.{png,pdf}
   - results/<phase>/<tag>/xai/<method>/class<c>_<id>.png
   - results/<phase>/<tag>/xai/xai_selection.csv
   - results/<phase>/<tag>/xai/xai_caption_notes.txt
-  - results/<phase>/<tag>/xai/xai_metrics.csv (when xai_quant=true)
+  - results/<phase>/<tag>/xai/xai_metrics.csv (when xai_quant=true: enrichment on the heuristic
+    lesion-detector masks; the expert-mask localisation metrics are --mode xai_localization)
 """
 
 import os
@@ -150,21 +151,6 @@ def _find_image_file(image_id: str, cfg: dict) -> Optional[str]:
     return None
 
 
-def _create_synthetic_fundus(size: int = 512) -> np.ndarray:
-    """Create a synthetic fundus disc image for tests/offline environments."""
-    img = np.zeros((size, size, 3), dtype=np.uint8)
-    center = (size // 2, size // 2)
-    radius = int(size * 0.44)
-    # Background retinal orange/red
-    cv2.circle(img, center, radius, (30, 80, 180), -1)
-    # Optic disc
-    cv2.circle(img, (int(size * 0.35), int(size * 0.5)), int(size * 0.08), (140, 200, 240), -1)
-    # Some simulated lesions
-    cv2.circle(img, (int(size * 0.6), int(size * 0.45)), 8, (20, 20, 120), -1)
-    cv2.circle(img, (int(size * 0.55), int(size * 0.65)), 12, (100, 230, 255), -1)
-    return img
-
-
 def load_display_and_input(
     row: Union[dict, pd.Series, np.ndarray, str],
     cfg: dict,
@@ -184,7 +170,9 @@ def load_display_and_input(
         raw_bgr = row['image'].copy()
     elif isinstance(row, (dict, pd.Series)):
         img_id = str(row.get('id', row.get('id_code', '')))
-        fpath = _find_image_file(img_id, cfg)
+        explicit = row.get('path', '')
+        fpath = explicit if isinstance(explicit, str) and explicit and os.path.isfile(explicit) \
+            else _find_image_file(img_id, cfg)
         if fpath:
             raw_bgr = cv2.imread(fpath)
     elif isinstance(row, str):
@@ -193,8 +181,7 @@ def load_display_and_input(
             raw_bgr = cv2.imread(fpath)
 
     if raw_bgr is None:
-        # Fallback to synthetic fundus (for synthetic unit tests / missing offline files)
-        raw_bgr = _create_synthetic_fundus(512)
+        raise FileNotFoundError(f'XAI: image not found or unreadable for row {row if isinstance(row, str) else dict(row)}')
 
     cropped = crop_fundus(raw_bgr)
     preproc_mode = cfg.get('preproc', 'legacy')
@@ -472,7 +459,7 @@ def compute_xai_quant_metrics(
             ci_lo = float(np.percentile(boot_means, 2.5))
             ci_hi = float(np.percentile(boot_means, 97.5))
         else:
-            mean_val, ci_lo, ci_hi = 1.0, 1.0, 1.0
+            mean_val, ci_lo, ci_hi = float('nan'), float('nan'), float('nan')   # nothing evaluated
 
         records.append({
             'method': m,
@@ -495,15 +482,23 @@ def run_xai_experiment(cfg: dict):
     xai_dir = os.path.join(exp_dir, 'xai')
     os.makedirs(xai_dir, exist_ok=True)
 
-    # Determine predictions file
+    # Determine predictions file: 'test' = APTOS test, 'external_test' = Messidor-2 TEST, '<dataset>_<split>'
     split_choice = cfg.get('xai_split', 'test')
-    if split_choice == 'external_test':
-        pred_file = os.path.join(exp_dir, 'predictions_external_test.npz')
-    else:
-        pred_file = os.path.join(exp_dir, 'predictions_test.npz')
+    set_name = {'test': 'aptos_test', 'external_test': 'messidor_test'}.get(split_choice, split_choice)
+    pred_file = os.path.join(exp_dir, f'predictions_{set_name}.npz')
+    legacy = {'aptos_test': 'predictions_test.npz', 'messidor_test': 'predictions_external_test.npz'}
+    if not os.path.isfile(pred_file) and set_name in legacy:
+        pred_file = os.path.join(exp_dir, legacy[set_name])
+    if not os.path.isfile(pred_file):
+        raise FileNotFoundError(f'{pred_file} missing: run --mode evaluate --tag {tag} first')
 
-    # Image selection
+    # Image selection (explicit image paths for the external datasets)
     selection_df = select_xai_images(pred_file, cfg)
+    from src.data.external import eval_frame
+    frame = eval_frame(cfg, set_name)[0]
+    if 'path' in frame.columns:
+        path_of = dict(zip(frame['id_code'].astype(str), frame['path'].astype(str)))
+        selection_df['path'] = selection_df['id'].astype(str).map(path_of).fillna('')
     selection_csv_path = os.path.join(xai_dir, 'xai_selection.csv')
     selection_df.to_csv(selection_csv_path, index=False)
 
@@ -611,10 +606,10 @@ def run_xai_experiment(cfg: dict):
         out_stem=fig_stem,
     )
 
-    # Copy to results/figures/fig16_xai_grid.{png,pdf}
+    # Copy to results/figures/xai_grid.{png,pdf} (not touched by --mode report)
     os.makedirs('results/figures', exist_ok=True)
-    shutil.copy2(fig_stem + '.png', 'results/figures/fig16_xai_grid.png')
-    shutil.copy2(fig_stem + '.pdf', 'results/figures/fig16_xai_grid.pdf')
+    shutil.copy2(fig_stem + '.png', 'results/figures/xai_grid.png')
+    shutil.copy2(fig_stem + '.pdf', 'results/figures/xai_grid.pdf')
 
     # Write caption notes
     notes_content = (
@@ -634,8 +629,22 @@ def run_xai_experiment(cfg: dict):
     with open(os.path.join(xai_dir, 'xai_caption_notes.txt'), 'w') as f_notes:
         f_notes.write(notes_content)
 
-    # Optional quantitative evaluation
+    # Optional quantitative evaluation on the heuristic lesion-detector masks (fold-0 model)
     if cfg.get('xai_quant', False):
         quant_csv = os.path.join(xai_dir, 'xai_metrics.csv')
-        # Placeholder call for optional quant if test_ds available
-        print(f"Quantitative XAI metrics requested; output target: {quant_csv}")
+        model = GradeNet(cfg)
+        model.load_state_dict(torch.load(os.path.join(ckpt_dir, 'fold0.pth'), map_location='cpu'))
+        model.to(device).eval().float()
+
+        def _items():
+            for _, r in frame.iterrows():
+                p = r['path'] if 'path' in frame.columns and isinstance(r['path'], str) and r['path'] else \
+                    _find_image_file(str(r['id_code']), cfg)
+                im = cv2.imread(p) if p else None
+                if im is not None:
+                    yield {'raw_bgr': im, 'y': int(r['diagnosis'])}
+
+        with torch.set_grad_enabled(True):
+            compute_xai_quant_metrics([model], _items(), cfg, quant_csv,
+                                      max_images=int(cfg.get('xai_quant_max_images', 400)))
+        print(f"Heuristic-mask XAI metrics written to {quant_csv}")

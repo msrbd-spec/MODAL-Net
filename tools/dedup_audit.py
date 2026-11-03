@@ -183,7 +183,14 @@ def _hash_all(image_items, label='', cache_dir=None):
             try:
                 z = np.load(cache_path, allow_pickle=False)
                 cached = list(zip(z['ids'].tolist(), z['hashes'].tolist()))
-                if len(cached) == len(image_items):
+                n_items = int(z['n_items']) if 'n_items' in z.files else None
+                item_ids = {i for _, i in image_items}
+                # a cache is valid when it was built from the same image list; images that were unreadable
+                # at hashing time are simply absent from it (old caches carry no n_items: accept when every
+                # cached id is still present and at most 1 % of the images are missing from the cache)
+                ok = (n_items == len(image_items)) if n_items is not None else (
+                    all(c[0] in item_ids for c in cached) and len(cached) >= 0.99 * len(image_items))
+                if ok:
                     print(f'pHash {label}: loaded {len(cached)} hashes from cache')
                     return cached
             except Exception:
@@ -204,7 +211,7 @@ def _hash_all(image_items, label='', cache_dir=None):
         try:
             ids = np.array([r[0] for r in results])
             hashes = np.array([r[1] for r in results], dtype=np.uint64)
-            np.savez_compressed(cache_path, ids=ids, hashes=hashes)
+            np.savez_compressed(cache_path, ids=ids, hashes=hashes, n_items=np.array(len(image_items)))
         except Exception as e:
             print(f'pHash {label}: cache write failed ({e})')
     return results
@@ -268,3 +275,60 @@ def run_dedup_audit(cfg):
     df.to_csv(os.path.join(out_dir, 'duplicates.csv'), index=False)
     print(f'dedup_audit: {len(pairs)} candidate pairs -> '
           f'results/phase0_protocol/audit/duplicates.csv')
+
+
+# ---------------------------------------------------------------------------
+# External datasets (DDR, DeepDRiD, IDRiD): only the comparisons that involve them
+# ---------------------------------------------------------------------------
+
+def run_dedup_external(cfg):
+    """Audit DDR / DeepDRiD / IDRiD against APTOS, EyePACS, Messidor-2 and against each other.
+
+    Re-uses the cached hashes of the original audit (results/phase0_protocol/audit/phash_*.npz) and only
+    computes the pairs that involve a new dataset, so the 88k x 88k EyePACS comparison is not repeated.
+    Writes results/phase0_protocol/audit/duplicates_external.csv (same columns as duplicates.csv).
+    Image ids are the id_code of the frozen splits (IDRiD ids carry the tr_/te_ split prefix).
+    """
+    import pandas as pd
+    from src.data.external import DATASET_SPLITS, AUDIT_LABELS, available_datasets, raw_frame
+
+    P = cfg['paths']
+    cache_dir = os.path.join('results', 'phase0_protocol', 'audit')
+    old = {
+        'APTOS': _hash_all(_collect_images([P['aptos']['train_images'], P['aptos']['val_images'],
+                                            P['aptos']['test_images']]), 'APTOS', cache_dir=cache_dir),
+        'Messidor': _hash_all(_collect_images(P['messidor']['images']), 'Messidor', cache_dir=cache_dir),
+        'EyePACS': _hash_all(_collect_images(P['eyepacs']['images'], extensions=('.jpeg', '.jpg', '.png')),
+                             'EyePACS', cache_dir=cache_dir),
+    }
+    new = {}
+    for name in available_datasets(cfg):
+        if name == 'messidor':
+            continue
+        items = []
+        for split in DATASET_SPLITS[name]:
+            fr = raw_frame(cfg, name, split)
+            items += list(zip(fr['path'], fr['id_code']))
+        new[AUDIT_LABELS[name]] = _hash_all(items, AUDIT_LABELS[name], cache_dir=cache_dir)
+    print('dedup_external: ' + ', '.join(f'{k}={len(v)}' for k, v in {**old, **new}.items()))
+
+    def _cmp(a, la, b, lb, same=False):
+        with tqdm(total=len(a), desc=f'dupes {la} vs {lb}') as pbar:
+            return _compare_vectorized(a, la, b, lb, max_dist=4, same_set=same, pbar=pbar)
+
+    pairs = []
+    labels = list(new)
+    for i, la in enumerate(labels):
+        pairs += _cmp(new[la], la, new[la], la, same=True)
+        for lb in labels[i + 1:]:
+            pairs += _cmp(new[la], la, new[lb], lb)
+        for lo_, hashes in old.items():
+            pairs += _cmp(new[la], la, hashes, lo_)
+    os.makedirs(cache_dir, exist_ok=True)
+    df = pd.DataFrame(pairs) if pairs else pd.DataFrame(
+        columns=['dataset_a', 'id_a', 'dataset_b', 'id_b', 'hamming_distance'])
+    out = os.path.join(cache_dir, 'duplicates_external.csv')
+    df.to_csv(out, index=False)
+    if len(df):
+        print(df.groupby(['dataset_a', 'dataset_b']).size().rename('pairs').to_string())
+    print(f'dedup_external: {len(df)} candidate pairs -> {out}')

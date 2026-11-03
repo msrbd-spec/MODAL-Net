@@ -65,21 +65,25 @@ def emd2(z: torch.Tensor, q: torch.Tensor, w: torch.Tensor = None) -> torch.Tens
     return l.mean()
 
 
-def coral_loss(z: torch.Tensor, y: torch.Tensor, K: int = 5) -> torch.Tensor:
+def coral_loss(z: torch.Tensor, y: torch.Tensor, K: int = 5, w: torch.Tensor = None) -> torch.Tensor:
     """CORAL (Consistent Rank Logits) ordinal loss.
 
     z: (B, K - 1) binary ordinal logits
     y: (B,) class indices 0..K-1
+    w: optional (B,) sample weights (multi-source training); None = plain mean (unchanged behaviour)
     """
     threshold_indices = torch.arange(K - 1, device=y.device).unsqueeze(0)
     levels = (y.unsqueeze(1) > threshold_indices).float()
-    return F.binary_cross_entropy_with_logits(z, levels)
+    if w is None:
+        return F.binary_cross_entropy_with_logits(z, levels)
+    per_sample = F.binary_cross_entropy_with_logits(z, levels, reduction='none').mean(dim=1)
+    return (per_sample * w).sum() / (w.sum() + 1e-8)
 
 
 def total_loss(z: torch.Tensor, q: torch.Tensor, y: torch.Tensor, cfg: dict, w: torch.Tensor = None) -> torch.Tensor:
     """Compute overall loss according to cfg configuration."""
-    if cfg.get('head_type') == 'coral':
-        return coral_loss(z, y, K=cfg.get('num_classes', 5))
+    if cfg.get('head_type') in ('coral', 'coral_src'):
+        return coral_loss(z, y, K=int(cfg.get('num_classes', 5)), w=w)
 
     loss_ce = soft_ce(z, q, w)
     if cfg.get('loss') == 'ce_emd':

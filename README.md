@@ -1,67 +1,61 @@
 # MODAL-Net
 
-**Multi-source, Ordinal, Domain-generalizable, Ambiguity-aware, Lesion-aware Network**
+**Multi-source, Ordinal, Domain-generalizable, Ambiguity-aware, Lesion-aware Network** — diabetic retinopathy
+grading (5-class ICDR + referable DR), backbone MaxViT-L (timm `maxvit_large_tf_512.in1k`).
 
-Backbone: MaxViT-L for Diabetic Retinopathy Grading.
-
-Paper Title: *"MODAL-Net: Multi-Source Lesion-Aware Pretraining with Ambiguity-Aware Ordinal Learning for Domain-Generalizable Diabetic Retinopathy Grading"*
-
----
-
-## 1. Environment Setup
-
-Please follow the detailed setup instructions in the header of [`requirements.txt`](requirements.txt):
-1. Create and activate a virtual environment (`python -m venv .venv; source .venv/bin/activate`).
-2. Install the PyTorch/TorchVision pair matching your server driver/CUDA build.
-3. Install dependencies: `pip install -r requirements.txt`.
-4. Verify environment and backbones: `python tools/env_report.py`.
-5. Run fast test suite: `pytest -q`.
-
-> **Offline Cluster Rule:** Set `export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` and ensure model weights are pre-cached.
+Where to start:
+- **`SERVER_TODO.md`** — what to run next on the cluster, in order (mandatory / optional, GPU-hour estimates).
+- **`commands.md`** — every command of the project (all phases, evaluation, selection, report, XAI, troubleshooting).
+- **`SERVER_CLEANUP.md`** — what can be deleted on the server and on the Mac, with copy-paste commands.
+- **`RESULTS_STATUS.md`** — the result ledger up to 2026-11-03.
+- **`agent_context/MODAL_PART1.md` / `MODAL_PART2.md` / `MODAL_PART3.md`** — the specification (Part 1 S0b summarises the 2026-11-03 revision).
 
 ---
 
-## 2. Running Experiments
+## 1. Environment
 
-Every experiment runs via `main.py` with 5-fold cross-validation, evaluation on APTOS Test and Messidor-2 DEV and TEST sets, and automated artifact generation:
+Follow the header of [`requirements.txt`](requirements.txt): create a virtual environment, install the torch / torchvision
+pair for your CUDA build, `pip install -r requirements.txt`, then `python tools/env_report.py`.
+Offline cluster: `export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` (weights must already be in the cache).
 
 ```bash
-# Standard training experiment
-python main.py --mode experiment --phase phase2a_recipe --tag my_recipe_exp
-
-# Override configuration parameters directly via CLI
-python main.py --mode experiment --phase phase2a_recipe --tag my_recipe_exp --set lr=5.0e-5 batch_size=8
-
-# Inference-only evaluation with existing fold checkpoints
-python main.py --mode inference_experiment --phase phase8_inference --tag my_inf_exp --base <checkpoint_tag> --set tta=five_crop
-
-# Conformal prediction calibration
-python main.py --mode calibrate_conformal --phase phase8_inference --tag my_conformal_exp --base <checkpoint_tag> --set conformal_alpha=0.10
-
-# Master table and paper figures generation
-python main.py --mode report
+pytest -q        # 71 tests, ~4 min on CPU; every test runs in its own temporary folder
 ```
 
----
+## 2. Data
 
-## 3. Explainability (XAI Grid)
+`datasets/README.md` describes the expected layout of APTOS-2019, Messidor-2, EyePACS, DDR, DeepDRiD and IDRiD.
+The external evaluation splits are frozen once with `python main.py --mode dedup_external` and
+`python main.py --mode make_external_splits` (see `commands.md` §3).
 
-To generate the 5-row publication XAI grid comparing Grad-CAM++, Grad-CAM, LayerCAM, Eigen-CAM, and classical lesion detector contours:
+## 3. Running
+
+Every experiment is one command. It trains 5 folds and evaluates the pooled APTOS OOF predictions, the APTOS test set
+and the dev / test split of Messidor-2, DDR, DeepDRiD and IDRiD with the same 5-class, referable and calibration metrics:
 
 ```bash
-python main.py --mode xai --phase phase9_final --tag winner --set xai_top_k=1 xai_seed=0 xai_show_lesions=true
+python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc --inherit p3b_joint \
+    --set loss=coral head_type=coral_src src_offsets=true
+python main.py --mode evaluate --tag p3b_joint          # re-evaluate a finished run on every set (no retraining)
+python main.py --mode evaluate_all                      # every finished run
+python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint
+python main.py --mode report --set report_final=p4j_coralsrc report_baseline=p2a_plain
 ```
 
-Output artifacts are saved to `results/<phase>/<tag>/xai/`:
-- `fig_xai_grid.png` and `fig_xai_grid.pdf` (also copied to `results/figures/fig16_xai_grid.{png,pdf}`)
-- `xai_selection.csv` (selected images and confidence scores)
-- `xai_caption_notes.txt` (detailed figure caption and interpretation disclaimers)
-- `xai/<method>/class<c>_<id>.png` (individual CAM heatmaps overlaid on native fundus images)
+`--set` accepts only keys that exist in `configs/config.yaml` / `configs/config_ssl.yaml`.
 
----
+## 4. Explainability
 
-## 4. Plan and Specifications
+```bash
+python main.py --mode xai --tag p4j_coralsrc --set xai_split=messidor_test xai_top_k=1   # 5-row CAM grid
+python main.py --mode xai_localization --tag p4j_coralsrc                               # CAM vs expert lesion masks (DDR, IDRiD)
+```
+Outputs: `results/<phase>/<tag>/xai/` (grid, selection, caption notes, `xai_localization.csv`) and `results/figures/xai_grid.{png,pdf}`.
 
-Comprehensive specifications, clinical priors, ablation tables, mathematical formulations, and engineering work packages are documented in:
-- [`agent_context/MODAL_PART1.md`](agent_context/MODAL_PART1.md): Identity, data splits, repository layout, module specifications.
-- [`agent_context/MODAL_PART2.md`](agent_context/MODAL_PART2.md): 10-phase roadmap, execution commands, paper tables, figures, test suite.
+## 5. Integrity rules built into the code
+
+- Selection never reads TEST predictions (selection guard); TEST splits are for reporting only.
+- Paper tables and figures are built from real artefacts only; missing inputs are listed in
+  `results/tables/TABLES_README.txt` and `results/figures/FIGURES_README.txt`, never filled in.
+- Evaluation images that duplicate a training-pool image are removed from the external splits (`splits/external/exclusions.csv`);
+  `tools/leakage_check.py` reports the remaining overlap per run (the APTOS test set is never filtered).

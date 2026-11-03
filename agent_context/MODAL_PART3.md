@@ -99,3 +99,25 @@ STEP 6 - FINAL CHECKS AND REPORT
 Run: ast syntax check on all changed files, pytest -q (all tests including T12-T16), python tools/env_report.py, one smoke experiment (epochs=1, n_folds=2, tiny batch) followed by python main.py --mode xai on it (use xai_top_k=1; if no checkpoints can be produced in your
 environment, say so and rely on the synthetic tests), and the git checks of step 5. Reply with: (1) every file created or changed, (2) test and check results (include the font that was actually used for figures), (3) the exact versions written to requirements.txt and which of them were UNTESTED,
 (4) differences you found between plan and code and what you changed in the plan files, (5) open questions. Do not start any other work.
+=====================================================================
+REVISION 2026-11-03 (applied after the steps above; Part 1 S0b is the summary, Part 1/2 carry the details)
+=====================================================================
+Status of the items of this prompt after the revision:
+- STEP 1 (bold figure style): unchanged and still enforced by save_fig(); the paper figure SET changed (Part 2 S12): every paper figure is now drawn
+  from real artefacts, figures without inputs are skipped and listed in results/figures/FIGURES_README.txt. The previous build_paper_figures()
+  drew hard-coded or random data (fig03 "synthetic realistic curves", fig04 hard-coded confusion matrices, fig09/fig14 random points, fig18
+  synthetic fundus) and build_paper_tables() filled empty tables and the literature table with invented numbers; both were replaced.
+- STEP 2 (XAI grid): unchanged formulas and layout; the grid is copied to results/figures/xai_grid.{png,pdf} (not fig16_xai_grid); xai_split also
+  accepts <dataset>_<dev|test> of the external datasets; the synthetic-fundus fallback for missing images was removed (a missing image raises);
+  the xai_quant placeholder was replaced by a real call (heuristic-mask enrichment, fold-0 model). New: --mode xai_localization (expert masks of
+  DDR / IDRiD; Part 1 S7s).
+- STEP 3 (plan files): Part 1 and Part 2 updated in place on 2026-11-03 (CHANGELOG entries at the end of both files).
+- STEP 4 (requirements): no new dependency (the DeepDRiD .xlsx labels are read by a built-in reader because openpyxl is not on the cluster).
+- STEP 5 (git hygiene): unchanged. Important: splits/*.json are tracked by .gitignore, and the old test-suite had overwritten the Mac copies with
+  synthetic ids (24 / 96 Messidor ids); never sync splits/ or results/ from the Mac to the server (SERVER_TODO.md B1). The test-suite now runs
+  every test in a temporary folder (tests/conftest.py).
+- STEP 6 (checks): `pytest -q` -> 71 passed (CPU, ~4 min), including the end-to-end synthetic pipeline tests/test_pipeline.py.
+New files of the revision: src/data/external.py, src/evaluation/evaluate.py, src/evaluation/cutpoints.py, src/xai/localization.py,
+tools/cutpoint_diagnostic.py, tools/leakage_check.py, tools/dup_review.py, tests/synth.py, tests/test_pipeline.py,
+tests/test_external_and_config.py, SERVER_TODO.md, SERVER_CLEANUP.md. Removed: src/training/feature_balance.py, src/models/wavelet_gate.py,
+tests/test_feature_balance.py, tests/test_smoke.py.

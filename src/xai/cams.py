@@ -31,8 +31,8 @@ class ProbWrapper(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.model(x)
-        if self.head_type == 'coral':
-            p = probs_from_logits(z, head_type='coral')
+        if self.head_type in ('coral', 'coral_src'):
+            p = probs_from_logits(z, head_type=self.head_type)
             return torch.log(torch.clamp(p, min=1e-12))
         return z
 

@@ -3,22 +3,73 @@
 import os
 import glob
 import json
+import difflib
 import yaml
 
+# Training sources that can be added to APTOS (extra_sources) and evaluation datasets (external_sets).
+EXTRA_SOURCES = ('eyepacs', 'ddr', 'deepdrid')
+EXTERNAL_DATASETS = ('messidor', 'ddr', 'deepdrid', 'idrid')
+HEAD_TYPES = ('softmax', 'coral', 'coral_src')
+ORDINAL_HEADS = ('coral', 'coral_src')
 
-def parse_set(pairs):
+
+def allowed_keys():
+    """Keys accepted by --set: every top-level key of configs/config.yaml and configs/config_ssl.yaml."""
+    keys = set()
+    for path in ('configs/config.yaml', 'configs/config_ssl.yaml'):
+        if os.path.isfile(path):
+            data = yaml.safe_load(open(path)) or {}
+            keys |= set(data.keys())
+    return keys
+
+
+def parse_set(pairs, allowed=None):
     """Parse --set k=v pairs into a dict.
 
     Values are parsed by yaml.safe_load so that true/false/null/numbers/lists
-    are converted to their Python equivalents.
+    are converted to their Python equivalents. A token without '=' or a key that
+    does not exist in the config files raises ValueError (no silent no-op runs).
     """
     if not pairs:
         return {}
+    if allowed is None:
+        allowed = allowed_keys()
     out = {}
     for p in pairs:
+        if '=' not in p:
+            raise ValueError(
+                f"--set token {p!r} has no '='. Write key=value (lists as key=[a,b]); "
+                f"a value that contains spaces must be quoted.")
         k, v = p.split('=', 1)
+        k = k.strip()
+        if allowed and k not in allowed:
+            close = difflib.get_close_matches(k, sorted(allowed), n=3)
+            hint = f' Did you mean: {", ".join(close)}?' if close else ''
+            raise ValueError(f'--set key {k!r} does not exist in configs/config.yaml or configs/config_ssl.yaml.{hint}')
         out[k] = yaml.safe_load(v)
     return out
+
+
+def train_sources(cfg):
+    """Ordered list of training sources: 'aptos' first, then eyepacs (legacy joint) and extra_sources."""
+    src = ['aptos']
+    if cfg.get('joint_eyepacs'):
+        src.append('eyepacs')
+    for s in (cfg.get('extra_sources') or []):
+        if s not in src:
+            src.append(s)
+    return src
+
+
+def merge_cfg(base, saved):
+    """Update base with saved; nested dicts (paths) are merged key by key, so a snapshot written before a
+    dataset was added keeps the default paths of that dataset."""
+    for k, v in (saved or {}).items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            merge_cfg(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 
 def resolve(x):
@@ -104,8 +155,23 @@ def validate_cfg(c):
         'amp_mix needs preproc != legacy (equal-size, aspect-preserving images)'
     assert not (c.get('mixstyle') and 'maxvit' not in str(c.get('backbone', ''))), \
         'mixstyle manual stage loop is implemented for timm MaxViT only'
-    assert not (c.get('head_type') == 'coral' and c.get('soft_labels', 'none') != 'none'), \
-        'coral is incompatible with soft labels'
+    assert c.get('head_type', 'softmax') in HEAD_TYPES, \
+        f"head_type must be one of {HEAD_TYPES}, got {c.get('head_type')}"
+    assert not (c.get('head_type') in ORDINAL_HEADS and c.get('soft_labels', 'none') != 'none'), \
+        'coral / coral_src heads learn cumulative-threshold targets and are incompatible with soft labels'
+    extra = c.get('extra_sources') or []
+    assert isinstance(extra, (list, tuple)), f'extra_sources must be a list, got {extra!r}'
+    for s_name in extra:
+        assert s_name in EXTRA_SOURCES, f"extra_sources entries must be in {EXTRA_SOURCES}, got {s_name!r}"
+    assert not (c.get('joint_eyepacs') and extra), \
+        'use either joint_eyepacs (legacy two-source path) or extra_sources, not both'
+    ext_sets = c.get('external_sets') or []
+    for s_name in ext_sets:
+        assert s_name in EXTERNAL_DATASETS, f"external_sets entries must be in {EXTERNAL_DATASETS}, got {s_name!r}"
+    for s_name in (c.get('select_dev_sets') or []):
+        assert s_name in EXTERNAL_DATASETS, f"select_dev_sets entries must be in {EXTERNAL_DATASETS}, got {s_name!r}"
+    assert c.get('select_endpoint', 'amended') in ('amended', 'original'), \
+        f"select_endpoint must be 'amended' or 'original', got {c.get('select_endpoint')}"
     assert c.get('uda_style_pool', 'none') in ('none', 'messidor_dev'), \
         f"uda_style_pool must be 'none' or 'messidor_dev', got {c.get('uda_style_pool')}"
     assert c.get('tta', 'none') in ('none', 'flip', 'flip_rot'), \
@@ -124,8 +190,9 @@ def validate_cfg(c):
         for m in methods:
             assert m in allowed_xai, f"Invalid xai_method '{m}'. Allowed: {allowed_xai}"
     if 'xai_split' in c and c['xai_split'] is not None:
-        assert c['xai_split'] in ('test', 'external_test'), \
-            f"xai_split must be 'test' or 'external_test', got {c['xai_split']}"
+        allowed_splits = {'test', 'external_test'} | {f'{d}_{s}' for d in EXTERNAL_DATASETS for s in ('dev', 'test')}
+        assert c['xai_split'] in allowed_splits, \
+            f"xai_split must be one of {sorted(allowed_splits)}, got {c['xai_split']}"
 
 
 def build_cfg(args):
@@ -155,7 +222,7 @@ def build_cfg(args):
     base_resolved = resolve(getattr(args, 'base', None))
     base = inherit_resolved or base_resolved
     if base is None and getattr(args, 'mode', None) in \
-            ('test', 'external_validation', 'calibrate_conformal'):
+            ('test', 'external_validation', 'calibrate_conformal', 'evaluate', 'xai', 'xai_localization'):
         base = getattr(args, 'tag', None)
 
     if base:
@@ -163,7 +230,7 @@ def build_cfg(args):
         if os.path.isfile(snap):
             saved = yaml.safe_load(open(snap))
             if saved:
-                cfg.update(saved)
+                merge_cfg(cfg, saved)
         else:
             try:
                 exp_dir = find_exp(base)
@@ -171,7 +238,7 @@ def build_cfg(args):
                 if os.path.isfile(cfg_path):
                     saved = yaml.safe_load(open(cfg_path))
                     if saved:
-                        cfg.update(saved)
+                        merge_cfg(cfg, saved)
             except Exception:
                 pass
 

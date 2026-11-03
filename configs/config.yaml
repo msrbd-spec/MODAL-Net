@@ -1,5 +1,7 @@
 # MODAL-Net default configuration
 # Every key can be overridden with --set key=value on the CLI.
+# --set only accepts keys that exist in this file or in configs/config_ssl.yaml
+# (a typo now stops the run instead of silently training an exact copy of the parent).
 
 paths:
   aptos:
@@ -16,15 +18,40 @@ paths:
     images: datasets/EyePACS/EyePACS
     labels_csv: datasets/EyePACS/trainLabels.csv/trainLabels.csv
     lesion_labels: datasets/EyePACS/lesion_labels
+  ddr:
+    # DR_grading/{train,valid,test}/*.jpg + {train,valid,test}.txt ("<file> <grade>", grade 5 = ungradable)
+    root: datasets/DDR-dataset/DR_grading
+    lesion_root: datasets/DDR-dataset/lesion_segmentation
+  deepdrid:
+    # regular fundus images only (ultra-widefield images are a different modality and are not used)
+    root: datasets/DeepDRiD/regular_fundus_images
+    train_dir: regular-fundus-training
+    train_csv: regular-fundus-training.csv
+    val_dir: regular-fundus-validation
+    val_csv: regular-fundus-validation.csv
+    test_dir: Online-Challenge1_2-Evaluation
+    test_labels: Challenge1_labels.xlsx
+  idrid:
+    root: datasets/IDRiD/B. Disease Grading
+    train_images: 1. Original Images/a. Training Set
+    test_images: 1. Original Images/b. Testing Set
+    train_csv: 2. Groundtruths/a. IDRiD_Disease Grading_Training Labels.csv
+    test_csv: 2. Groundtruths/b. IDRiD_Disease Grading_Testing Labels.csv
+    lesion_root: datasets/IDRiD/A. Segmentation
 
 backbone: maxvit_large_tf_512.in1k
+pretrained: true
 pretrained_fallback: strict  # strict = abort if pretrained weights cannot be loaded; warn = allow random init on purpose
 img_size: 512
 img_size_arg: null
+backbone_global_pool: null   # timm global_pool override, e.g. avg for the RETFound ViT baseline (adds fc_norm)
 num_classes: 5
-head_type: softmax
+head_type: softmax           # softmax | coral | coral_src (single severity score + ordered cut-points, optional per-source offsets)
+src_offsets: true            # coral_src only: learn one cut-point offset vector per training source
+src_offset_l2: 0.1           # coral_src only: L2 weight that ties per-source cut-points to the shared cut-points
 preproc: legacy
 aug: basic
+description: null
 
 epochs: 30
 warmup_epochs: 2
@@ -64,9 +91,17 @@ inner_k: 4
 inner_epochs: 15
 
 pretrain_path: null
+# Legacy two-source joint training (APTOS + EyePACS, half of every batch from EyePACS). Kept bit-compatible
+# with p3b_joint and its seed replicates. New multi-source runs use extra_sources instead (not both).
 joint_eyepacs: false
 joint_w: 0.5
 eyepacs_max: 20000
+# Multi-source training: labelled sources added to APTOS. Any subset of [eyepacs, ddr, deepdrid].
+# Half of every batch comes from APTOS, the other half is split evenly between the extra sources.
+# A dataset used here is "in-source": its test split is still disjoint from training, but it is not external.
+extra_sources: []
+source_w: 0.5                # loss weight of non-APTOS samples in multi-source training
+source_max: 20000            # cap on images drawn per extra source (sampled once per run with the run seed)
 
 amp_mix: false
 amp_prob: 0.5
@@ -80,7 +115,6 @@ ms_p: 0.5
 ms_alpha: 0.1
 ms_stages: [0, 1]
 uda_style_pool: none
-use_wghr: false
 
 tta: none
 tta_scales: [1.0]
@@ -94,6 +128,30 @@ ckpt_from: null
 pre_epochs: 15
 ssl_init: null
 
+# Evaluation: every experiment is evaluated on the APTOS test set and on the dev and test split of every
+# dataset listed here. Splits are frozen by --mode make_external_splits (splits/external/*.csv).
+external_sets: [messidor, ddr, deepdrid, idrid]
+eval_overwrite: false        # evaluate mode: re-run inference even when matching predictions exist
+evaluate_only: []            # evaluate_all mode: restrict to these tags (empty = every finished experiment)
+bootstrap_ci: 1000           # resamples for the per-metric 95% CIs written to metrics_long.csv (0 = off)
+fewshot_n: [10, 25, 50, 100] # labelled target images used to refit the 4 cut-points (few-shot curve)
+fewshot_draws: 20            # random draws per few-shot size
+dedup_exclude_max: 4         # pHash Hamming distance at or below which an evaluation image that duplicates a training-source image is excluded
+
+# Selection (phase_select)
+select_endpoint: amended     # amended = mean external-DEV QWK primary, APTOS OOF non-inferiority; original = pre-registered OOF rule
+select_report_only: false    # true = write phase_table_<endpoint>.csv only; WINNER.txt and summary decisions untouched
+select_dev_sets: [messidor, ddr, deepdrid, idrid]
+tost_margin: 0.01            # equivalence margin for in-domain (OOF QWK) differences
+noninf_margin: 0.005         # allowed OOF QWK / referable AUROC drop under the amended endpoint
+
+# Seed analysis (seed_summary)
+seed_reference: p2b_none     # tag whose seed group is the comparator in seed_compare.csv
+
+# Paper report (--mode report): tags of the final model and of the baseline
+report_final: null
+report_baseline: null
+
 # XAI Grid & Interpretability
 xai_seed: 0
 xai_top_k: 10
@@ -103,3 +161,5 @@ xai_split: test
 xai_alpha: 0.5
 xai_quant: false
 xai_quant_max_images: 400
+xai_loc_method: gradcampp    # CAM used for the expert-mask localisation metrics (--mode xai_localization)
+xai_loc_dilate: 15           # dilation (pixels at 512 px) of expert lesion masks

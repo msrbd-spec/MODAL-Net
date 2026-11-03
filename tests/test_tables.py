@@ -84,7 +84,7 @@ def test_phase_select_and_master_tables(synthetic_phase_env):
     phase = synthetic_phase_env
 
     # 1. Run phase_select
-    winner_tag = phase_select(phase, reference='p2a_plain')
+    winner_tag = phase_select(phase, reference='p2a_plain', cfg={'select_dev_sets': ['messidor']})
     assert winner_tag == 'p2a_reg'
 
     # Check phase_table.csv exists and has delta columns

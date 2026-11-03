@@ -75,6 +75,7 @@ def predict_probs(models, loader, cfg: dict, tta: str = None, scales: list = Non
 
     for batch in loader:
         x_raw = batch['x'].to(device)
+        dom = batch['domain'].to(device) if 'domain' in batch else None
         y = batch['y'].cpu().numpy()
         b_ids = batch['id']
 
@@ -93,7 +94,9 @@ def predict_probs(models, loader, cfg: dict, tta: str = None, scales: list = Non
                 x_scaled = rescale(x_raw, float(s))
                 for r, h, v in views:
                     x_aug = apply_view(x_scaled, r, h, v)
-                    z = m(x_aug)
+                    # coral_src: images of a training source use that source's cut-points, every other
+                    # image (held-out sites) the shared cut-points; other heads ignore the domain
+                    z = m(x_aug, domain=dom) if head_type == 'coral_src' else m(x_aug)
                     p = probs_from_logits(z, head_type)
                     accum_p += p
                     count += 1

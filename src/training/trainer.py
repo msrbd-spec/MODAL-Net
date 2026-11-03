@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader, ConcatDataset
 
 from src.data.splits import fold_frames, eyepacs_frame
 from src.data.datasets import DRDataset
-from src.data.samplers import JointBatchSampler
+from src.data.external import DOMAIN_IDS, source_frame
+from src.data.samplers import JointBatchSampler, MultiSourceBatchSampler
 from src.losses.losses import total_loss
 from src.models.gradenet import GradeNet, llrd_groups, probs_from_logits
 from src.training.ema import ModelEMA
@@ -143,7 +144,10 @@ def evaluate_loader(model: nn.Module, loader: DataLoader, cfg: dict, device: str
             x = batch['x'].to(device)
             y = batch['y'].cpu().numpy()
             b_ids = batch['id']
-            z = model(x)
+            if head_type == 'coral_src' and 'domain' in batch:
+                z = model(x, domain=batch['domain'].to(device))   # APTOS validation: APTOS cut-points
+            else:
+                z = model(x)
             p = probs_from_logits(z, head_type).cpu().numpy()
 
             all_ids.extend([str(i) for i in b_ids])
@@ -181,6 +185,10 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     os.makedirs(curves_dir, exist_ok=True)
     os.makedirs(res_dir, exist_ok=True)
 
+    if cfg.get('head_type') in ('coral', 'coral_src') and float(cfg.get('mix_prob', 0.0) or 0.0) > 0.0:
+        raise ValueError('coral / coral_src heads train on the hard label y, so Mixup/CutMix would pair a mixed '
+                         'image with an unmixed label: set mix_prob=0 (the p2a_plain lineage already has it)')
+
     # Resume check
     if os.path.isfile(ckpt_path) and os.path.isfile(val_metrics_path) and os.path.isfile(oof_fold_path):
         logger.info(f"Fold {k} already completed. Resuming without retraining.")
@@ -195,16 +203,29 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     aptos_paths = cfg['paths']['aptos']
     aptos_dirs = [aptos_paths['train_images'], aptos_paths['val_images']]
 
-    # Load soft labels if configured
+    # Load soft labels if configured. A missing file or a training image without a soft label is an
+    # error: the old behaviour (silently training with plain CE) produced hybrid arms labelled as AASL.
     soft_dict = None
-    if cfg.get('soft_labels') == 'aasl' and cfg.get('soft_label_run'):
+    soft_mode = cfg.get('soft_labels') or 'none'
+    if soft_mode == 'aasl':
+        if not cfg.get('soft_label_run'):
+            raise ValueError("soft_labels=aasl needs soft_label_run=<make_softlabels tag>")
         sl_path = os.path.join('softlabels', cfg['soft_label_run'], f'outer{k}.npz')
-        if os.path.isfile(sl_path):
-            with np.load(sl_path, allow_pickle=True) as f_sl:
-                sl_ids = [str(x) for x in f_sl['ids']]
-                sl_q = f_sl['Q']
-                soft_dict = {i: q for i, q in zip(sl_ids, sl_q)}
-            logger.info(f"Loaded {len(soft_dict)} AASL soft labels for fold {k} from {sl_path}")
+        if not os.path.isfile(sl_path):
+            raise FileNotFoundError(
+                f"AASL soft labels for fold {k} not found: {sl_path}. Wait until make_softlabels has written "
+                f"all outer0..{int(cfg.get('n_folds', 5)) - 1}.npz files.")
+        with np.load(sl_path, allow_pickle=True) as f_sl:
+            sl_ids = [str(x) for x in f_sl['ids']]
+            sl_q = f_sl['Q']
+            soft_dict = {i: q for i, q in zip(sl_ids, sl_q)}
+        missing = set(tr_df['id_code'].astype(str)) - set(soft_dict)
+        if missing:
+            raise ValueError(f"{sl_path} has no soft label for {len(missing)} training images of fold {k} "
+                             f"(e.g. {sorted(missing)[:3]}); the soft labels belong to a different split.")
+        logger.info(f"Loaded {len(soft_dict)} AASL soft labels for fold {k} from {sl_path}")
+    elif soft_mode != 'none':
+        raise ValueError(f"soft_labels must be 'none' or 'aasl', got {soft_mode!r}")
 
     batch_size = int(cfg.get('batch_size', 16))
     num_workers = int(cfg.get('num_workers', 4))
@@ -214,9 +235,30 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     aptos_train_ds = DRDataset(tr_df, aptos_dirs, cfg, train=True, soft=soft_dict, domain=0, style_bank=style_bank)
     aptos_val_ds = DRDataset(va_df, aptos_dirs, cfg, train=False, domain=0)
 
-    # Multi-source joint dataset if joint_eyepacs is True
+    # Multi-source training: legacy joint_eyepacs path (bit-compatible with p3b_joint) or extra_sources
     is_joint = bool(cfg.get('joint_eyepacs', False))
-    if is_joint:
+    extra_sources = list(cfg.get('extra_sources') or [])
+    if extra_sources:
+        src_datasets = [aptos_train_ds]
+        src_labels = []
+        cap = int(cfg.get('source_max', 20000))
+        for name in extra_sources:
+            s_df, s_dirs = source_frame(cfg, name)
+            if len(s_df) > cap:
+                s_df = s_df.sample(n=cap, random_state=int(cfg.get('seed', 0))).reset_index(drop=True)
+            src_datasets.append(DRDataset(s_df, s_dirs, cfg, train=True, domain=DOMAIN_IDS[name],
+                                          style_bank=style_bank))
+            src_labels.append(s_df['diagnosis'].values)
+            logger.info(f"Extra training source {name}: {len(s_df)} images (domain id {DOMAIN_IDS[name]})")
+        ms_sampler = MultiSourceBatchSampler(len(aptos_train_ds), src_labels, batch_size,
+                                             seed=int(cfg.get('seed', 0)) + k)
+        train_loader = DataLoader(
+            ConcatDataset(src_datasets),
+            batch_sampler=ms_sampler,
+            num_workers=num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
+    elif is_joint:
         P_eye = cfg['paths']['eyepacs']
         eye_df = eyepacs_frame(cfg)
         max_eye = int(cfg.get('eyepacs_max', 20000))
@@ -294,6 +336,19 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
     grad_clip = float(cfg.get('grad_clip', 1.0))
     freeze_epochs = int(cfg.get('freeze_epochs', 1))
     joint_w = float(cfg.get('joint_w', 0.5))
+    source_w = float(cfg.get('source_w', 0.5))
+    is_src_head = cfg.get('head_type') == 'coral_src'
+    offset_l2 = float(cfg.get('src_offset_l2', 0.1))
+
+    def _forward(m, xb, domb):
+        # coral_src uses the per-source cut-points of each training image; other heads ignore the domain
+        return m(xb, domain=domb) if is_src_head else m(xb)
+
+    def _loss(m, zb, qb, yb, wb):
+        l_val = total_loss(zb.float(), qb, yb, cfg, w=wb)
+        if is_src_head:
+            l_val = l_val + offset_l2 * m.head.offset_penalty()
+        return l_val
 
     # The scheduler advances once per OPTIMIZER step, which happens every
     # grad_accum micro-batches, so schedule over optimizer steps, not
@@ -331,31 +386,33 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
 
             x, q = mix_batch(x, q, cfg)
 
+            dom = batch['domain'].to(device) if 'domain' in batch else None
             w = None
-            if is_joint and 'domain' in batch:
-                dom = batch['domain'].to(device)
+            if is_joint and dom is not None:
                 w = torch.where(dom == 1, torch.tensor(joint_w, device=device), torch.tensor(1.0, device=device))
+            elif extra_sources and dom is not None:
+                w = torch.where(dom != 0, torch.tensor(source_w, device=device), torch.tensor(1.0, device=device))
 
             if use_sam:
                 # First pass
                 if use_autocast:
                     with torch.autocast('cuda', dtype=torch.bfloat16):
-                        z = model(x)
-                        loss = total_loss(z.float(), q, y, cfg, w=w)
+                        z = _forward(model, x, dom)
+                        loss = _loss(model, z, q, y, w)
                 else:
-                    z = model(x)
-                    loss = total_loss(z.float(), q, y, cfg, w=w)
+                    z = _forward(model, x, dom)
+                    loss = _loss(model, z, q, y, w)
                 loss.backward()
                 optimizer.first_step(zero_grad=True)
 
                 # Second pass
                 if use_autocast:
                     with torch.autocast('cuda', dtype=torch.bfloat16):
-                        z2 = model(x)
-                        loss2 = total_loss(z2.float(), q, y, cfg, w=w)
+                        z2 = _forward(model, x, dom)
+                        loss2 = _loss(model, z2, q, y, w)
                 else:
-                    z2 = model(x)
-                    loss2 = total_loss(z2.float(), q, y, cfg, w=w)
+                    z2 = _forward(model, x, dom)
+                    loss2 = _loss(model, z2, q, y, w)
                 loss2.backward()
                 if grad_clip > 0.0:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -368,11 +425,11 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
             else:
                 if use_autocast:
                     with torch.autocast('cuda', dtype=torch.bfloat16):
-                        z = model(x)
-                        loss = total_loss(z.float(), q, y, cfg, w=w) / float(grad_accum)
+                        z = _forward(model, x, dom)
+                        loss = _loss(model, z, q, y, w) / float(grad_accum)
                 else:
-                    z = model(x)
-                    loss = total_loss(z.float(), q, y, cfg, w=w) / float(grad_accum)
+                    z = _forward(model, x, dom)
+                    loss = _loss(model, z, q, y, w) / float(grad_accum)
 
                 loss.backward()
                 train_loss_accum += loss.item() * float(grad_accum)
@@ -437,6 +494,10 @@ def train_fold(cfg: dict, k: int, tag: str, logger, train_df=None, val_df=None, 
 
             # Save OOF arrays
             np.savez(oof_fold_path, ids=np.array(val_ids), y=val_y, P=val_p)
+            if is_src_head:
+                thr_path = os.path.join(res_dir, f'source_thresholds_fold{k}.json')
+                with open(thr_path, 'w') as f_thr:
+                    json.dump(eval_model.source_thresholds(), f_thr, indent=2)
         else:
             patience_counter += 1
             if patience_counter >= patience:

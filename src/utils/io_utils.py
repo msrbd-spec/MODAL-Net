@@ -42,7 +42,9 @@ def log_run(tag, kind, metrics):
             if 'runs' in f:
                 runs = f['runs'].item()
     runs[tag] = {'kind': kind, **metrics}
-    np.savez(path, runs=np.array(runs))
+    tmp = f'{path}.{os.getpid()}.tmp.npz'
+    np.savez(tmp, runs=np.array(runs))
+    os.replace(tmp, path)   # atomic: a parallel reader never sees a half-written file
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +64,34 @@ _ZOO_COL_MAP = {
     'Bin_Prec':       ('test_bin_prec',    'test_bin_prec_std'),
     'Bin_Rec':        ('test_bin_sens',    'test_bin_sens_std'),
     'Bin_F1':         ('test_bin_f1',      'test_bin_f1_std'),
-    'Ext_Acc':        ('ext_acc',          'ext_acc_std'),
-    'Ext_QWK':        ('ext_qwk',         'ext_qwk_std'),
-    'Ext_Bin_Acc':    ('ext_bin_acc',      'ext_bin_acc_std'),
+    # The zoo's external columns were measured on ALL 1,744 Messidor-2 images (including the 349 that
+    # later became DEV), with single-fold models. They are stored under ext_full1744_* so they can never
+    # be mixed with the Messidor-2 TEST (1,395) columns ext_* / messidor_test_* of the protocol runs.
+    'Ext_Acc':        ('ext_full1744_acc',     'ext_full1744_acc_std'),
+    'Ext_QWK':        ('ext_full1744_qwk',     'ext_full1744_qwk_std'),
+    'Ext_Bin_Acc':    ('ext_full1744_bin_acc', 'ext_full1744_bin_acc_std'),
 }
+
+ZOO_EXT_COLUMNS = {'ext_acc': 'ext_full1744_acc', 'ext_qwk': 'ext_full1744_qwk',
+                   'ext_bin_acc': 'ext_full1744_bin_acc', 'ext_acc_std': 'ext_full1744_acc_std',
+                   'ext_qwk_std': 'ext_full1744_qwk_std', 'ext_bin_acc_std': 'ext_full1744_bin_acc_std'}
+
+
+def normalize_zoo_row(row):
+    """Move the external columns of an imported zoo row (ext_set == 'full1744') to ext_full1744_*.
+
+    Zoo summaries imported before this fix carry the full-1,744 numbers in ext_*; this keeps old and
+    new imports identical in every table that is built from summary.csv.
+    """
+    if str(row.get('ext_set', '')) != 'full1744':
+        return row
+    row = dict(row)
+    for old, new in ZOO_EXT_COLUMNS.items():
+        if old in row:
+            val = row.pop(old)
+            if new not in row or row.get(new) in ('', None) or (isinstance(row.get(new), float) and np.isnan(row.get(new))):
+                row[new] = val
+    return row
 
 
 def _parse_mean_std(s):
@@ -110,8 +136,12 @@ SUMMARY_COLUMNS = [
     'ext_bin_f1', 'ext_bin_auroc', 'ext_bin_auprc', 'ext_sens_at_spec90',
     # Calibration
     'ece_test', 'ece_ext',
+    # Zoo only (single-fold models, all 1,744 Messidor-2 images)
+    'ext_full1744_acc', 'ext_full1744_qwk', 'ext_full1744_bin_acc',
     # Diagnostics
     'train_val_gap',
+    # Run description
+    'train_sources', 'heldout_sets', 'seed', 'head_type', 'winner_eligible',
     # Decision
     'decision', 'is_winner', 'notes',
 ]

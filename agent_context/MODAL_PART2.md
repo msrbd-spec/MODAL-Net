@@ -23,121 +23,225 @@ S9. PHASES (each phase = a results/<phase>/ folder; experiments are parallel alt
   phase7_feature_balance optional (S7n).
   phase8_inference       TTA variants, temperature scaling, ordinal-interval conformal, selective prediction (no training).
   phase9_final           winner re-run with seeds 1,2 (seed 0 = the winner itself) and the plain MaxViT-L baseline with seeds 1,2; seed table; then master table and figures.
+  [REVISED PHASE PLAN 2026-11-03 — results so far: phases 2a/2b/3a flat in-domain; p3b_joint +0.10 Messidor-TEST QWK; SSL negative; CORAL small +]
+  phase0_protocol (+)    dedup_external + make_external_splits: DDR, DeepDRiD, IDRiD frozen; duplicate exclusion; leakage report.
+  (all finished arms)    evaluate_all: every arm re-evaluated on the four external datasets without retraining; cut-point diagnostic on saved predictions.
+  phase2a..phase3a       decisions kept as recorded; amended-endpoint tables written report-only. phase3b_joint: re-decided with the amended endpoint.
+  phase3c_seeds/ssl/dose seed replicates (seed = unit), SSL dose point, EyePACS dose (data volume vs source diversity).
+  phase4_label_loss      old lineage (on p2b_none): p4_coral, p4_emd reported only.
+  phase4j_label_loss     new lineage on p3b_joint: coral, EMD, AASL, AASL+EMD, coral_src without offsets, coral_src with per-source offsets. Winner = FINAL.
+  phase10_ms_ddr / _deepdrid  multi-source leave-sites-out: sources APTOS+EyePACS+DDR (held out Messidor, DeepDRiD, IDRiD) and APTOS+EyePACS+DeepDRiD
+                         (held out Messidor, DDR, IDRiD) x {CE, coral_src shared, coral_src with offsets}: the multi-site test of the cut-point idea.
+  phase4j_seeds / phase10_seeds / phase9_final  seeds 1,2 of the headline configurations and of the plain baseline p2a_plain.
+  phase5_architecture    ConvNeXtV2-L, EfficientNetV2-M on the new lineage + heterogeneous ensemble (optional, recommended).
+  phase6_domain_gen      pruned to 4 report-only cells: amplitude mixing, MixStyle, both, amplitude mixing without joint training (optional).
+  phase7_feature_balance removed.  phase8_inference: one TTA run + conformal on FINAL.  XAI: grid + expert-mask localisation on FINAL and p2a_plain.
 
-S10. COMMANDS (every experiment is ONE command; it trains 5 folds, tests, evaluates Messidor DEV and TEST, writes CSVs and figures)
-  Conventions: --phase names the results folder; --tag is the unique experiment name (also the checkpoints/ and logs/ folder); --inherit X starts from the saved config of X; --inherit @phaseNAME uses results/phaseNAME/WINNER.txt.
-  Independent commands can run in parallel on different GPUs: CUDA_VISIBLE_DEVICES=1 python main.py ...      Never start a command that inherits a tag before that tag's command has finished.
-  --- Phase 0 (once) ---
+S10. COMMANDS [rewritten 2026-11-03; generated from commands.md sections 3-6, which is the executable copy; run order: SERVER_TODO.md]
+  Conventions: --phase names the results folder; --tag is the unique experiment name (also the checkpoints/ and logs/ folder); --inherit X starts from the saved
+  config of X; --inherit @phaseNAME uses results/phaseNAME/WINNER.txt. --set accepts only keys of configs/config.yaml / config_ssl.yaml. Every experiment
+  trains 5 folds and evaluates APTOS OOF, APTOS test and the dev/test split of Messidor-2, DDR, DeepDRiD and IDRiD. Independent commands run in parallel.
+  === 3. One-time setup for the new external datasets ===
+  # 3.1 layout (paths are in configs/config.yaml -> paths; ultra-widefield DeepDRiD images are not used)
+  #   datasets/DDR-dataset/DR_grading/{train,valid,test}/*.jpg + {train,valid,test}.txt
+  #   datasets/DDR-dataset/lesion_segmentation/{images,annotations}/...
+  #   datasets/DeepDRiD/regular_fundus_images/{regular-fundus-training,regular-fundus-validation,Online-Challenge1_2-Evaluation}/...
+  #   datasets/IDRiD/B. Disease Grading/...   datasets/IDRiD/A. Segmentation/...
+  # 3.2 duplicate audit of the new datasets (re-uses the cached hashes of the first audit; CPU job)
+  python main.py --mode dedup_external
+  # 3.3 freeze the evaluation splits; DDR / DeepDRiD / IDRiD dev+test images that duplicate a training-pool image are
+  #     removed (Messidor-2 DEV/TEST and the APTOS test set are never filtered: finished runs were scored on them)
+  python main.py --mode make_external_splits
+  python tools/dup_review.py              # contact sheet of the removed pairs: check they are real duplicates
+  # 3.4 leakage report for the runs that matter (APTOS test is never filtered; state its count in the paper)
+  python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint
+  `make_external_splits` refuses to run when a dataset in `external_sets` is missing. To run before a
+  dataset is available, drop it explicitly: `--set 'external_sets=[messidor,ddr,deepdrid]'` (the same
+  value must then be used for every run you want to compare).
+  ---
+  === 4. Re-evaluating finished experiments (no retraining) ===
+  python main.py --mode evaluate --tag p3b_joint            # one tag
+  python main.py --mode evaluate_all                        # every finished tag, report: results/master/evaluate_all_report.csv
+  python main.py --mode evaluate_all --set 'evaluate_only=[p3c_none_s1,p3c_joint_s1]'
+  Saved predictions that cover the frozen splits are re-used (Messidor and APTOS-test numbers stay identical);
+  only the missing sets are predicted with the 5 fold checkpoints (~15 GPU-min per tag for the ~7,600 new
+  images). The phase decision columns and the run's provenance (`set_overrides`, `inherit`) are kept. Every
+  `--set` of an `evaluate_all` call (e.g. `external_sets`, `batch_size`) is applied to every tag. Parallel
+  `evaluate_all` calls on disjoint `evaluate_only` lists share `results/master/evaluate_all_report.csv`
+  (rows of other tags are kept). Zoo rows and folders without a config snapshot are listed as skipped.
+  If a legacy prediction file would be replaced by one covering a different image set, the old file is kept
+  as `*.pre_v2.npz`.
+  Cut-point diagnostic on saved predictions (CPU, seconds; works with the old Messidor files too):
+  python tools/cutpoint_diagnostic.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
+  ---
+  === 5. Selection (`phase_select`) ===
+  Both endpoints are always computed and written to `phase_table.csv` (`decision_original`,
+  `decision_amended`); `select_endpoint` (default `amended`) decides `decision`, the winner and `WINNER.txt`.
+  - **original** (pre-registered): ADOPT iff paired-OOF ΔQWK CI lower bound > 0 (+ AUROC / OOF guards; phase-specific rules for 2a, 2b, 6).
+  - **amended** (primary from 2026-11-03): mean QWK over the held-out external DEV sets (`select_dev_sets`, each dataset resampled independently): ADOPT iff its 95 % CI lower bound > 0 **and** its Holm-adjusted p < 0.05 within the phase, the APTOS OOF point estimate ΔQWK ≥ −0.005 (non-inferiority guard on the point estimate, as in the original rule) and the mean-DEV referable AUROC point estimate Δ ≥ −0.005. The winner is the eligible arm with the largest paired Δ mean-DEV QWK (same held-out sets for arm and reference). In-domain differences get a TOST equivalence flag (`oof_equivalent`, 90 % CI inside ±0.01). A held-out DEV set without predictions stops `phase_select` (run `evaluate` first).
+  python main.py --mode phase_select --phase phase3b_joint --reference @phase3a_pretrain --design parallel
+  # tables only, WINNER.txt untouched (used to document the closed phases under the other endpoint)
+  python main.py --mode phase_select --phase phase2a_recipe --reference p2a_plain --set select_endpoint=amended select_report_only=true
+  ---
+  === 6. Commands, phase by phase ===
+  Status on 2026-11-03: phases 0 to 3b are finished, phase 4 has `p4_coral` and `p4_emd`, `sl_p4` soft
+  labels are complete, the `phase3c_*` wave is partly running. The commands of finished phases are kept
+  for reproducibility.
+  --- Phase 0 — protocol (done) ---
   python main.py --mode make_splits
   python main.py --mode dedup_audit
-  python main.py --mode detect_lesions
-  python main.py --mode import_zoo --phase phase1_zoo --csv baseline_result.csv
-  pytest tests -q
-  --- Phase 2a: recipe (plain baseline = the zoo recipe) ---
-  python main.py --mode experiment --phase phase2a_recipe --tag p2a_plain   --set loss=ce drop_path=0.0 head_dropout=0.0 llrd=1.0 mix_prob=0.0 ordinal_eps=0.0 ema_decay=0.0 aug=basic preproc=legacy
+  python main.py --mode import_zoo --phase phase1_zoo --csv agent_context/baseline_result.csv
+  nohup python main.py --mode detect_lesions > logs/detect_lesions.out 2>&1 &
+  (`make_splits` rewrites `splits/aptos_folds.json` and `splits/messidor_*_ids.json`; never run it on the
+  server again, and never copy `splits/` from another machine to the server.)
+  --- Phase 2a / 2b / 3a / 3b (done) ---
+  python main.py --mode experiment --phase phase2a_recipe --tag p2a_plain --set loss=ce drop_path=0.0 head_dropout=0.0 llrd=1.0 mix_prob=0.0 ordinal_eps=0.0 ema_decay=0.0 aug=basic preproc=legacy
   python main.py --mode experiment --phase phase2a_recipe --tag p2a_reg     --inherit p2a_plain --set drop_path=0.3 head_dropout=0.3 llrd=0.8
   python main.py --mode experiment --phase phase2a_recipe --tag p2a_mix     --inherit p2a_plain --set mix_prob=0.5
   python main.py --mode experiment --phase phase2a_recipe --tag p2a_osmooth --inherit p2a_plain --set ordinal_eps=0.1
   python main.py --mode experiment --phase phase2a_recipe --tag p2a_ema     --inherit p2a_plain --set ema_decay=0.999
   python main.py --mode experiment --phase phase2a_recipe --tag p2a_aug     --inherit p2a_plain --set aug=medical
-  python main.py --mode experiment --phase phase2a_recipe --tag p2a_sam     --inherit p2a_plain --set use_sam=true          (optional)
-  python main.py --mode phase_select --phase phase2a_recipe --reference p2a_plain --design parallel
-  python main.py --mode experiment --phase phase2a_recipe --tag p2a_bundle --inherit p2a_plain --set bundle_from=phase2a_recipe
-  python main.py --mode phase_select --phase phase2a_recipe --reference p2a_plain --design parallel          (final WINNER.txt of the phase, bundle included)
-  --- Phase 2b: preprocessing parity (reference = the phase2a winner, no retraining) ---
+  python main.py --mode experiment --phase phase2a_recipe --tag p2a_sam     --inherit p2a_plain --set use_sam=true
+  python main.py --mode experiment --phase phase2a_recipe --tag p2a_bundle  --inherit p2a_plain --set bundle_from=phase2a_recipe
   python main.py --mode experiment --phase phase2b_preprocess --tag p2b_scaled     --inherit @phase2a_recipe --set preproc=scaled
   python main.py --mode experiment --phase phase2b_preprocess --tag p2b_clahe_only --inherit @phase2a_recipe --set preproc=clahe_only
   python main.py --mode experiment --phase phase2b_preprocess --tag p2b_none       --inherit @phase2a_recipe --set preproc=none
-  python main.py --mode phase_select --phase phase2b_preprocess --reference @phase2a_recipe --design parallel
-  --- Phase 3a: pretraining ---
   python main.py --mode pretrain --kind eyepacs_sup --inherit @phase2b_preprocess --tag pre_eyepacs_sup
   python main.py --mode pretrain --kind ssl         --inherit @phase2b_preprocess --tag pre_ssl --set ssl_save_dir=checkpoints/pretrain/ssl_maxvit
-  python main.py --mode pretrain --kind ssl_sup     --inherit @phase2b_preprocess --tag pre_ssl_sup --set ssl_init=checkpoints/pretrain/ssl_maxvit/ssl_pretrained_backbone.pth
-  python main.py --mode experiment --phase phase3a_pretrain --tag p3a_sup    --inherit @phase2b_preprocess --set pretrain_path=checkpoints/pretrain/eyepacs_sup.pth
-  python main.py --mode experiment --phase phase3a_pretrain --tag p3a_ssl    --inherit @phase2b_preprocess --set pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_pretrained_backbone.pth
+  python main.py --mode pretrain --kind ssl_sup     --inherit @phase2b_preprocess --tag pre_ssl_sup --set ssl_init=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch50.pth
+  python main.py --mode experiment --phase phase3a_pretrain --tag p3a_sup    --inherit @phase2b_preprocess --set pretrain_path=checkpoints/pretrain/eyepacs_sup_v1.pth
+  python main.py --mode experiment --phase phase3a_pretrain --tag p3a_ssl    --inherit @phase2b_preprocess --set pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch50.pth
   python main.py --mode experiment --phase phase3a_pretrain --tag p3a_sslsup --inherit @phase2b_preprocess --set pretrain_path=checkpoints/pretrain/ssl_sup.pth
-  python main.py --mode phase_select --phase phase3a_pretrain --reference @phase2b_preprocess --design parallel
-  --- Phase 3b: joint multi-source fine-tuning ---
-  python main.py --mode experiment --phase phase3b_joint --tag p3b_joint    --inherit @phase3a_pretrain --set joint_eyepacs=true joint_w=0.5
-  python main.py --mode experiment --phase phase3b_joint --tag p3b_joint_w25 --inherit @phase3a_pretrain --set joint_eyepacs=true joint_w=0.25        (optional)
-  python main.py --mode phase_select --phase phase3b_joint --reference @phase3a_pretrain --design parallel
-  --- Phase 4: labels and loss (soft labels are nested: 5 x (4 inner + 1 outer) trainings) ---
-  python main.py --mode experiment --phase phase4_label_loss --tag p4_emd   --inherit @phase3b_joint --set loss=ce_emd lambda_emd=1.0
-  python main.py --mode experiment --phase phase4_label_loss --tag p4_coral --inherit @phase3b_joint --set loss=coral head_type=coral
-  python main.py --mode make_softlabels --phase phase4_label_loss --tag sl_p4 --inherit @phase3b_joint
-  python main.py --mode experiment --phase phase4_label_loss --tag p4_aasl      --inherit @phase3b_joint --set soft_labels=aasl soft_label_run=sl_p4
-  python main.py --mode experiment --phase phase4_label_loss --tag p4_aasl_emd  --inherit @phase3b_joint --set soft_labels=aasl soft_label_run=sl_p4 loss=ce_emd lambda_emd=1.0
-  python main.py --mode phase_select --phase phase4_label_loss --reference @phase3b_joint --design parallel
-  --- Phase 5: architecture and heterogeneous ensemble ---
-  python main.py --mode experiment --phase phase5_architecture --tag p5_wghr --inherit @phase4_label_loss --set use_wghr=true
-  python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
-  python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4_label_loss --set backbone=tf_efficientnetv2_m.in21k_ft_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
-  python main.py --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4_label_loss,p5_convnextv2,p5_effnetv2 --set winner_eligible=false
-  python main.py --mode phase_select --phase phase5_architecture --reference @phase4_label_loss --design parallel
-  --- Phase 6: domain generalisation (choose on Messidor-DEV) ---
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_ref          --inherit @phase5_architecture --set preproc=scaled amp_mix=false          (only if the winner uses preproc=legacy)
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_pre_b03  --inherit @phase5_architecture --set preproc=scaled amp_mix=true amp_stage=pre  amp_beta_max=0.03
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_pre_b10  --inherit @phase5_architecture --set preproc=scaled amp_mix=true amp_stage=pre  amp_beta_max=0.10
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_pre_b20  --inherit @phase5_architecture --set preproc=scaled amp_mix=true amp_stage=pre  amp_beta_max=0.20
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_post_b10 --inherit @phase5_architecture --set preproc=scaled amp_mix=true amp_stage=post amp_beta_max=0.10
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms           --inherit @phase5_architecture --set preproc=scaled joint_eyepacs=true mixstyle=true ms_p=0.5 ms_alpha=0.1
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms       --inherit @phase5_architecture --set preproc=scaled joint_eyepacs=true mixstyle=true amp_mix=true amp_stage=<BEST_STAGE> amp_beta_max=<BEST_BETA>
-  python main.py --mode experiment --phase phase6_domain_gen --tag p6_uda          --inherit @phase5_architecture --set preproc=scaled uda_style_pool=messidor_dev amp_mix=true amp_stage=<BEST_STAGE> winner_eligible=false     (labelled UDA, not DG)
-  python main.py --mode inference_experiment --phase phase6_domain_gen --tag p6_devcal --base <BEST_P6_TAG> --set recalibrate=devcut winner_eligible=false       (cut points fitted on Messidor-DEV labels, labelled "dev-calibrated")
-  python main.py --mode phase_select --phase phase6_domain_gen --reference p6_ref --design parallel        (reference = @phase5_architecture if p6_ref was not needed)
-  --- Phase 7 (optional) ---
-  python main.py --mode feature_balance --phase phase7_feature_balance --tag p7_none     --base @phase6_domain_gen --method none
-  python main.py --mode feature_balance --phase phase7_feature_balance --tag p7_reweight --base @phase6_domain_gen --method reweight
-  python main.py --mode feature_balance --phase phase7_feature_balance --tag p7_smote    --base @phase6_domain_gen --method smote
-  python main.py --mode feature_balance --phase phase7_feature_balance --tag p7_gauss    --base @phase6_domain_gen --method gauss
-  python main.py --mode feature_balance --phase phase7_feature_balance --tag p7_lfsd     --base @phase6_domain_gen --method lfsd
-  python main.py --mode phase_select --phase phase7_feature_balance --reference p7_none --design parallel
-  --- Phase 8: inference (no training) ---
-  python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_none    --base @phase6_domain_gen --set tta=none
-  python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip    --base @phase6_domain_gen --set tta=flip
-  python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_fliprot --base @phase6_domain_gen --set tta=flip_rot
-  python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_scale   --base @phase6_domain_gen --set tta=flip_rot tta_scales=[0.9,1.0,1.1]
-  python main.py --mode inference_experiment --phase phase8_inference --tag p8_temp         --base @phase6_domain_gen --set tta=<BEST_TTA> temperature_scaling=true
-  python main.py --mode calibrate_conformal   --phase phase8_inference --tag p8_conformal   --base p8_temp --set conformal_alpha=0.10
-  python main.py --mode phase_select --phase phase8_inference --reference p8_tta_none --design parallel
-  --- Phase 9: final (seeds) ---
-  python main.py --mode inference_experiment --phase phase9_final --tag p9_final_s0 --base @phase8_inference
-  python main.py --mode experiment --phase phase9_final --tag p9_final_s1 --inherit @phase6_domain_gen --set seed=1 tta=<BEST_TTA>
-  python main.py --mode experiment --phase phase9_final --tag p9_final_s2 --inherit @phase6_domain_gen --set seed=2 tta=<BEST_TTA>
-  python main.py --mode experiment --phase phase9_final --tag p9_base_s1  --inherit p2a_plain --set seed=1
-  python main.py --mode experiment --phase phase9_final --tag p9_base_s2  --inherit p2a_plain --set seed=2
-  python main.py --mode inference_experiment --phase phase9_final --tag p9_base_s0 --base p2a_plain
-  python main.py --mode seed_summary --phase phase9_final
-  --- Phase 10: XAI (WP10) ---
-  python main.py --mode xai --phase phase9_final --tag winner [--set xai_seed=0 xai_top_k=10 xai_methods=[gradcampp,gradcam,layercam,eigencam] xai_show_lesions=true xai_split=test]
-  # Example for strictly most confident correct predictions:
-  python main.py --mode xai --phase phase9_final --tag winner --set xai_top_k=1
-  --- End: master table and paper artefacts ---
-  python main.py --mode master_table            -> results/master/master_table.csv (+ .tex, master_full.csv, master_per_class.csv, master_binary.csv, master_config.csv, master_deltas.csv)
-  python main.py --mode report                  -> results/tables/table01..15 and results/figures/fig01..18
-  Placeholders: <BEST_STAGE>, <BEST_BETA>, <BEST_P6_TAG>, <BEST_TTA> are read from results/<phase>/phase_table.csv; the winner tag of each phase is in results/<phase>/WINNER.txt.
+  python main.py --mode experiment --phase phase3b_joint --tag p3b_joint     --inherit @phase3a_pretrain --set joint_eyepacs=true joint_w=0.5
+  python main.py --mode experiment --phase phase3b_joint --tag p3b_joint_w25 --inherit @phase3a_pretrain --set joint_eyepacs=true joint_w=0.25
+  --- Phase 3c — seeds, dose and mechanism (exploratory wave, own folders) ---
+  for s in 1 2; do
+  python main.py --mode experiment --phase phase3c_seeds --tag p3c_none_s$s  --inherit p2b_none  --set seed=$s
+  python main.py --mode experiment --phase phase3c_seeds --tag p3c_joint_s$s --inherit p3b_joint --set seed=$s
+  python main.py --mode experiment --phase phase3c_seeds --tag p3c_coral_s$s --inherit p4_coral  --set seed=$s
+  python main.py --mode experiment --phase phase3c_seeds --tag p3c_sup_s$s   --inherit p3a_sup   --set seed=$s
+  done
+  python main.py --mode experiment --phase phase3c_ssl  --tag p3a_ssl60  --inherit p2b_none  --set pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch60.pth
+  python main.py --mode experiment --phase phase3c_dose --tag p3c_dose5k --inherit p3b_joint --set eyepacs_max=5000
+  python main.py --mode experiment --phase phase3c_dose --tag p3c_dose2k --inherit p3b_joint --set eyepacs_max=2000
+  --- Phase 4 — old lineage (on `p2b_none`; reported, not used further) ---
+  python main.py --mode make_softlabels --phase phase4_label_loss --tag sl_p4 --inherit p2b_none
+  python main.py --mode experiment --phase phase4_label_loss --tag p4_emd   --inherit p2b_none --set loss=ce_emd lambda_emd=1.0
+  python main.py --mode experiment --phase phase4_label_loss --tag p4_coral --inherit p2b_none --set loss=coral head_type=coral
+  python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_report_only=true
+  --- Phase 4j — label / loss / ordinal head on the new lineage (`p3b_joint`) ---
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coral         --inherit p3b_joint --set loss=coral head_type=coral
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_emd           --inherit p3b_joint --set loss=ce_emd lambda_emd=1.0
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_aasl          --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_aasl_emd      --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4 loss=ce_emd lambda_emd=1.0
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc_shared --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=false
+  python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc      --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=true src_offset_l2=0.1
+  python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint --design parallel
+  `sl_p4` soft labels were generated on the APTOS folds (identical fold ids); they are re-used on purpose.
+  `coral_src` = one severity score + ordered cut-points; `src_offsets=true` adds one cut-point offset vector
+  per training source (APTOS, EyePACS), tied by `src_offset_l2`; `src_offsets=false` is the
+  rank-consistent ordinal head without source offsets (the ablation that isolates the offsets).
+  --- Phase 10 — multi-source, leave-sites-out (the multi-site test of the cut-point idea) ---
+  # sources APTOS + EyePACS + DDR  -> held out: Messidor-2, DeepDRiD, IDRiD
+  python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_ce         --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]'
+  python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_coralsh    --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=false
+  python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_coralsrc   --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=true
+  python main.py --mode phase_select --phase phase10_ms_ddr --reference p10d_ce --design parallel
+  # sources APTOS + EyePACS + DeepDRiD -> held out: Messidor-2, DDR, IDRiD
+  python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_ce       --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]'
+  python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsh  --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=false
+  python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsrc --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=true
+  python main.py --mode phase_select --phase phase10_ms_deepdrid --reference p10q_ce --design parallel
+  --- Seeds for the headline comparisons (seed is the unit of analysis) ---
+  for s in 1 2; do
+  python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s$s        --inherit p4j_coralsrc        --set seed=$s
+  python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s$s --inherit p4j_coralsrc_shared --set seed=$s
+  python main.py --mode experiment --phase phase10_seeds --tag p10d_ce_s$s             --inherit p10d_ce             --set seed=$s
+  python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s$s       --inherit p10d_coralsrc       --set seed=$s
+  python main.py --mode experiment --phase phase9_final  --tag p9_base_s$s             --inherit p2a_plain           --set seed=$s
+  done
+  python main.py --mode seed_summary --reference p3b_joint      # results/master/seed_variance.csv + seed_compare.csv
+  Seed replicates are grouped automatically by configuration (any folder, any tag name).
+  --- Phase 5 — architecture on the new lineage ---
+  python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4j_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k_384 pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+  python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4j_label_loss --set backbone=efficientnetv2_rw_m.agc_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+  python main.py --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4j_label_loss,p5_convnextv2,p5_effnetv2
+  python main.py --mode phase_select --phase phase5_architecture --reference @phase4j_label_loss --design parallel
+  (If a ConvNeXt run goes out of memory at 512 px, re-run only that tag with `--set img_size=384`.)
+  Retinal foundation-model baseline (RETFound, ViT-Large MAE, 224 px). The weights are gated: on a machine with
+  internet, log in to Hugging Face, accept the terms of `YukunZhou/RETFound_mae_natureCFP`, download its `.pth`
+  file and copy it to the server as `checkpoints/pretrain/RETFound_mae_natureCFP.pth`. Then:
+  python main.py --mode experiment --phase phase5_architecture --tag p5_retfound       --inherit p2b_none  --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
+  python main.py --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
+  `lr=3.0e-4 llrd=0.65 drop_path=0.2` follow the RETFound fine-tuning recipe (base lr 5e-3 x batch 16 / 256, layer decay
+  0.65, drop path 0.2) as documented in the RETFound repository README; check the current README before the run.
+  The checkpoint loader accepts the MAE `{'model': ...}` format and drops the MAE head; `llrd` applies the ViT layer-decay
+  schedule. CAM-based XAI is implemented for convolutional / MaxViT stages only, not for this ViT baseline.
+  --- Phase 6 — domain generalisation, pruned to 4 cells (all winner_eligible=false) ---
+  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp      --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+  python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms       --inherit @phase4j_label_loss --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
+  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms   --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
+  python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none        --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+  python main.py --mode phase_select --phase phase6_domain_gen --reference @phase4j_label_loss --set select_report_only=true
+  `p6_amp_nojoint` separates the DG effect from the joint-training effect (vs `p2b_none`). The lineage
+  uses `preproc=none`, so amplitude mixing is allowed (it needs preproc != legacy).
+  --- Phase 8 — inference on the final model (no training) ---
+  The final model is the winner of phase 4j under the amended endpoint (pre-declared rule):
+  FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
+  python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip --base $FINAL --set tta=flip
+  python main.py --mode calibrate_conformal  --phase phase8_inference --tag p8_conformal --base $FINAL --set conformal_alpha=0.10
+  --- Final products ---
+  FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
+  python main.py --mode master_table
+  python main.py --mode seed_summary --reference p3b_joint
+  python main.py --mode report --set report_final=$FINAL report_baseline=p2a_plain soft_label_run=sl_p4
+  python main.py --mode xai --tag $FINAL --set xai_split=test
+  python main.py --mode xai --tag $FINAL --set xai_split=messidor_test xai_top_k=1
+  python main.py --mode xai_localization --tag $FINAL
+  python main.py --mode xai_localization --tag p2a_plain
+  `report` writes `results/tables/table*.csv/.tex` + `TABLES_README.txt` and `results/figures/fig*.png/.pdf`
+  + `FIGURES_README.txt`; a table or figure without real inputs is skipped and listed, never filled in.
+  The literature comparison is typed in by the authors from verified papers.
+  ---
 
-S11. PAPER TABLES (built from the master table by `--mode report`; CSV + LaTeX booktabs in results/tables/; 2 dp; mean+-std over folds for single models, bootstrap 95% CI for ensembles; best bold, second underlined; each CSV also lists the experiment names used)
-  table01 baseline zoo (imported)  | table02 recipe + preprocessing (phase2a/2b)  | table03 pretraining + joint-source (phase3a/3b)  | table04 label/loss (phase4)  | table05 architecture + ensemble (phase5)
-  table06 domain generalisation (phase6: ext QWK, Mild recall, predicted No-DR share, ext acc, ext referable acc/AUROC/sens@spec90; UDA and dev-calibrated rows marked)  | table07 feature-level balancing (phase7)
-  table08 inference (TTA, temperature scaling: ECE/NLL)  | table09 final per-class report, internal test and Messidor TEST  | table10 binary (referable) metrics: acc, prec, sens, spec, F1, AUROC, AUPRC, sens@spec90/95, internal and external
-  table11 statistical tests (each adopted component vs its reference: delta, 95% CI, Holm p, McNemar p)  | table12 conformal / selective prediction  | table13 literature comparison (reproduced zoo models + literature rows ONLY from verified papers, TODO_CITE until verified)
-  table14 compute (params, FLOPs, GPU hours, ms/image)  | table15 seed variance (final vs plain baseline, seeds 0-2).
+S11. PAPER TABLES [rewritten 2026-11-03] (`--mode report --set report_final=<tag> report_baseline=<tag>`; CSV + LaTeX booktabs in results/tables/; built only
+  from real artefacts; a table without inputs is skipped and listed in results/tables/TABLES_README.txt; old table files are deleted first)
+  table01_zoo_screening   imported zoo, single-fold models, external = all 1,744 Messidor-2 images (ext_full1744_*), marked as not comparable
+  table02_ablations       every protocol run: phase, train sources, decision (original) and decision (amended), OOF QWK, APTOS test QWK, TEST QWK on
+                          Messidor-2 / DDR / DeepDRiD / IDRiD, mean external QWK / referable AUROC / mild recall over held-out sets
+  table03_main_5class     final and baseline x every set (OOF, APTOS test, every external dev/test): accuracy, QWK, precision, recall, F1, mild recall
+                          as "value [95% CI]"
+  table04_main_binary     same for referable DR: accuracy, precision, sensitivity, specificity, F1, AUROC, AUPRC, sensitivity at 90% specificity
+  table05_per_class       final and baseline: per-class precision / recall / F1 / support per set
+  table06_statistical_tests  phase deltas: original and amended decisions, Delta OOF QWK (CI, Holm p, TOST flag), Delta mean external-DEV QWK (CI, Holm p)
+  table07_cutpoints       argmax vs DEV-refitted cut-points on every external TEST split (final and baseline)
+  table08_fewshot         few-shot cut-point curve (n = 10/25/50/100, mean +- SD over draws)
+  table09_seed_variance / table09b_seed_compare   seed groups (mean, SD, per-seed values) and seed-level comparisons (Welch)
+  table10_conformal       every conformal.csv found (coverage, width, singleton share, abstention, AURC, accuracy at coverage)
+  table11_compute         parameters and GPU hours from summary.csv
+  table12_xai_localization  expert-mask localisation (final and baseline)
+  A literature comparison is not generated: competitor numbers are typed in by the authors from verified papers or reproduced under this protocol.
 
-S12. FIGURES (`--mode report` -> results/figures/; per-experiment figures stay inside the experiment folder)
+S12. FIGURES [figure list rewritten 2026-11-03] (`--mode report` -> results/figures/; per-experiment figures stay inside the experiment folder)
   Bold styling rule (WP10, Step 1): All text in every figure must be bold (fontweight >= 700): titles, axis labels, tick labels, legends, legend titles, annotations, colorbars, panel/row/column labels. Enforced by set_bold_style() and save_fig() with assert weight_value(t.get_fontweight()) >= 700.
   Style: Arial 9 pt labels / 8 pt ticks, line width 1.5, grid alpha 0.25, no titles (captions in LaTeX), 300 dpi PNG + vector PDF, widths 3.5 in single / 7.2 in double.
   Colours: TRAIN '#1F77B4' (blue) and VAL '#D62728' (red) for every train/val curve. CLASS colours (Okabe-Ito): No DR '#0072B2', Mild '#E69F00', Moderate '#009E73', Severe '#D55E00', Proliferative '#CC79A7'.
   DOMAIN colours: APTOS '#332288', EyePACS '#117733', Messidor-2 '#CC6677'. Neutral '#7F7F7F'. Confusion matrices 'Blues'; difference heatmaps 'RdBu_r' centred at 0; grids 'viridis'.
-  fig01 pipeline (manual)   fig02 class distributions (domain colours, % with 2 dp labels, n table)   fig03 train/val curves (mean +- std shading over folds; best-epoch line; gap annotation)
-  fig04 confusion matrices (5-class and 2x2 referable; test and Messidor TEST; "n" and row-% to 2 dp)   fig05 ROC per class + macro + referable with bootstrap band and spec 90/95 markers   fig06 PR curves
-  fig07 reliability diagrams before/after temperature scaling (bars '#1F77B4', diagonal grey dashed, gap hatched '#D62728', ECE in legend)   fig08 risk-coverage internal vs external (AURC in legend)
-  fig09 t-SNE/UMAP of penultimate features (<=3000 points, fixed seed): by class and by domain, baseline vs final   fig10 under-grading: mean expected grade by true class (internal vs external) and predicted vs true class distribution on Messidor TEST
-  fig11 ablation bars per phase with 95% CI error bars (reference grey, ADOPT '#0072B2', REJECT light grey hatched)   fig12 forest plot of paired deltas (QWK, referable AUROC, Mild recall) with Holm p
-  fig13 per-class F1 and recall grouped bars (class colours), baseline vs final, internal and external   fig14 label ambiguity: histogram of alpha per class and a 4x4 grid of highest-alpha training images annotated "given -> OOF-pred"
-  fig15 domain analysis: radially averaged log amplitude spectra per domain before/after amplitude mixing, and the stage x beta heatmap of Messidor-DEV QWK
-  fig16 XAI grid: results/figures/fig16_xai_grid.{png,pdf} (5-row XAI Grid: classes 0..4 x columns [Original | Grad-CAM++ | Grad-CAM | LayerCAM | Eigen-CAM | Detected lesions] with shared horizontal colorbar, bold row labels with ensemble confidence, bold column headers, Arial bold via set_bold_style)
-  fig17 conformal: coverage vs target and interval-width distribution (bars '#0072B2')   fig18 preprocessing parity: 8 random APTOS vs 8 Messidor images after each preproc mode (legacy vs scaled), with native sizes in the captions.
+  Every paper figure is drawn from saved artefacts; a figure without inputs is skipped and listed in results/figures/FIGURES_README.txt. The methods
+  schematic is drawn by the authors. Model figures use report_final (and report_baseline where two models are compared).
+  fig01_class_distributions    class shares of every split in splits_summary.csv (APTOS test, Messidor DEV/TEST, DDR, DeepDRiD, IDRiD dev/test)
+  fig02_training_curves        per-fold train loss (blue) and validation accuracy (red) of the final model
+  fig03_confusion_matrices     final model, every test set (counts, row-normalised shading)
+  fig04_referable_roc_pr       referable ROC and PR of the final model on every test set
+  fig05_reliability            reliability diagrams with ECE per test set
+  fig06_risk_coverage          selective risk vs coverage per test set
+  fig07_grade_distribution_shift  true vs predicted grade distribution on every external test set, baseline vs final (the under-grading figure)
+  fig08_phase_forest           Delta OOF QWK and Delta mean external-DEV QWK with 95% CI for every phase arm
+  fig09_per_class              per-class recall and F1 of the final model per test set
+  fig10_fewshot_cutpoints      TEST QWK vs number of labelled target images used to refit the cut-points (baseline vs final; dotted = argmax)
+  fig11_source_cutpoints       learned shared and per-source cut-points (coral_src final model; mean +- SD over folds)
+  fig12_label_ambiguity        AASL ambiguity alpha per class (needs --set soft_label_run=sl_p4)
+  xai_grid (from --mode xai)   5-row XAI grid (unchanged layout, results/figures/xai_grid.{png,pdf})
 
 S13. WORK PACKAGES FOR THE AGENT (give Part 1 + Part 2 and ONE package at a time; each ends with the checks of S0)
   Prompt template: "Read the attached MODAL-Net master plan (Part 1 and Part 2) and the legacy_seed folder. Implement ONLY work package WPn exactly as specified (sections named below) in the folder MODAL-Net/.
@@ -152,6 +256,11 @@ S13. WORK PACKAGES FOR THE AGENT (give Part 1 + Part 2 and ONE package at a time
   WP11 plan update: update MODAL_PART1.md and MODAL_PART2.md to describe code as built, compare CLI commands with code, append CHANGELOG (agent).
   WP12 requirements and environment: rewrite requirements.txt with pinned tested versions and header, add tools/env_report.py, update README.md.
   WP13 git hygiene: .gitignore with grouped rules and explicit !agent_context/**, .gitkeep placeholders across all empty directories, datasets/README.md.
+  [2026-11-03, done in one revision] WP14 integrity: real-data-only tables/figures, no synthetic XAI fallback, strict --set, strict AASL, isolated tests.
+  WP15 external datasets: src/data/external.py, dedup_external, make_external_splits, evaluation-side exclusion, leakage_check, dup_review.
+  WP16 evaluation core: src/evaluation/evaluate.py, evaluate / evaluate_all modes, all metrics on all sets, CIs, legacy-file compatibility.
+  WP17 novelty: coral_src head, MultiSourceBatchSampler / extra_sources, cutpoints.py (devcal + few-shot), cutpoint_diagnostic, amended endpoint + TOST,
+  seed grouping by configuration. WP18 XAI localisation on expert masks. WP19 docs: commands.md, SERVER_TODO.md, SERVER_CLEANUP.md, Part 1/2/3.
 
 S14. TESTS AND ACCEPTANCE (tests/; run before reporting)
   T1 splits: folds reproduce StratifiedKFold(5, True, 42) on concat(train_1, valid); test ids disjoint from fold ids; Messidor dev/test disjoint by exam id; counts printed to splits_summary.csv.
@@ -165,6 +274,15 @@ S14. TESTS AND ACCEPTANCE (tests/; run before reporting)
   T14 XAI geometry parity: display and input tensor have identical crop/resize geometry (legacy stretch vs scaled padding); fundus mask boolean.
   T15 CAM analytical formulas: toy GAP network proves Grad-CAM weights equal linear head weights; output range [0, 1]; synthetic grid runs and passes bold style check.
   T16 XAI randomisation and pipeline: model-randomisation check sensitivity on CAM heatmaps and optional pytorch-grad-cam cross-check.
+  [2026-11-03] conftest.py runs EVERY test in its own temporary project folder (autouse) and blocks deletions inside the real results/, checkpoints/,
+  splits/, logs/, softlabels/. T8 rewritten (wavelet gate removed): ordinal probabilities, weighted coral loss, SourceOrdinalHead ordering / routing /
+  penalty, GradeNet coral_src domains, MultiSourceBatchSampler layout, SAM. T11 smoke replaced by tests/test_pipeline.py (synthetic project with all
+  seven datasets, tests/synth.py): make_splits -> dedup audits -> make_external_splits -> experiments (softmax, joint, coral_src multi-source, seed
+  replicate) -> every metric on every set -> evaluate re-use -> inference / ensemble / conformal -> evaluate_all -> phase_select (both endpoints,
+  report-only) -> master_table -> seed grouping -> report from real data -> cut-point and leakage tools -> XAI grid on an external set and expert-mask
+  localisation. T17-T22 (tests/test_external_and_config.py): strict --set, validate_cfg, xlsx reader, official-split frames, frozen splits with
+  duplicate exclusion, missing dataset fails, QWK == sklearn and cut-point recovery of a shifted scorer, AASL / mixup hard stops, zoo full1744 columns.
+  T7 report tests: without runs, no table or figure may be written. Expected: 71 passed.
 
 S15. RISKS AND THINGS TO VERIFY FIRST
   - MaxViT timm id / image size / offline cache; module names (stem, stages.i) for LLRD and MixStyle hooks; whether the zoo used another MaxViT-L variant; GPU memory at 512 px (use grad_checkpointing / grad_accum).
@@ -177,6 +295,15 @@ S15. RISKS AND THINGS TO VERIFY FIRST
   - CAM spatial resolution in MaxViT-L: stages[-1] resolution is 16x16 (coarse), stages[-2] is 32x32. LayerCAM fuses both stages to provide finer localization.
   - Selection bias of high-confidence examples: selected images are illustrative and not representative of entire class distributions; figure captions must explicitly state this disclaimer along with non-causal CAM interpretation.
   - Missing server fonts: Linux clusters may lack Arial; set_bold_style() falls back to Liberation Sans or DejaVu Sans and logs the resolved font family explicitly.
+  - [2026-11-03] pHash duplicates between fundus datasets can be false positives: review tools/dup_review.py before stating exclusion counts; tighten
+    dedup_exclude_max if needed and keep one value for the whole project. The APTOS test set is not filtered: state its leakage count.
+  - Joint training never excluded EyePACS duplicates of evaluation images (only pretraining did); the evaluation-side exclusion and leakage_check
+    cover this for the reported numbers.
+  - The 5-class Messidor-2 labels are an upstream derivation (RESULTS_STATUS §2.2); report referable metrics prominently. IDRiD test has 103 images and
+    DeepDRiD test 400: wide CIs. Different graders per dataset = different label protocols; that is the motivation of coral_src, not a nuisance to hide.
+  - coral_src novelty is unverified until the literature check of Part 1 S2 C6; cut-point refits use target labels (DEV / few-shot) and are always
+    reported as calibrated, never as zero-shot. The zero-shot number of coral_src uses the shared cut-points.
+  - Re-evaluation cost: ~7,600 new external images x 5 fold models per tag (~15 GPU-min per tag at 512 px, fp32).
 =====================================================================
 END OF PART 2.
 =====================================================================
@@ -190,3 +317,7 @@ END OF PART 2.
   - S14: Added acceptance tests T12-T16 covering bold style, XAI image selection, geometry parity, CAM analytical formulas, and model-randomisation checks.
   - S15: Documented risks regarding MaxViT CAM stage resolutions (16x16 vs 32x32), selection bias in high-confidence illustrative figures, and font resolution fallback on headless Linux servers.
 - **Why**: Completed WP10-WP13 execution according to `agent_context/MODAL_PART3.md` (Steps 1-6).
+- **Date**: 2026-11-03 (revision 2)
+- **What changed**: S9 revised phase plan appended; S10 regenerated from commands.md (new lineage, multi-source phase 10, seeds, pruned phases 5/6,
+  phase 7 removed); S11 and S12 rewritten to the real-data-only tables and figures; S13 WP14-WP19; S14 isolated tests, new pipeline and external tests;
+  S15 new risks. See Part 1 S0b.

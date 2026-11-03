@@ -39,7 +39,14 @@ class DRDataset(Dataset):
         self.bank = style_bank
         self.tf = build_transform(cfg, train)
 
-    def _read(self, name: str) -> np.ndarray:
+    def _read(self, name: str, path: str = '') -> np.ndarray:
+        if path:
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f"Image not found: {path}")
+            im = cv2.imread(path)
+            if im is None:
+                raise FileNotFoundError(f"Image unreadable: {path}")
+            return im
         name_str = str(name).strip()
         has_ext = name_str.lower().endswith(('.png', '.jpg', '.jpeg'))
         for d in self.dirs:
@@ -81,7 +88,8 @@ class DRDataset(Dataset):
             else:
                 sty = cand
 
-        raw_bgr = self._read(name)
+        path = r['path'] if 'path' in r.index and isinstance(r['path'], str) else ''
+        raw_bgr = self._read(name, path)
         pre_bgr = preprocess(
             raw_bgr,
             self.cfg.get('preproc', 'legacy'),

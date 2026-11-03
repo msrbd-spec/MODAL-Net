@@ -1,4 +1,9 @@
-"""Selection logic, phase tables, master tables, and seed summaries."""
+"""Selection logic (phase_select), master tables, seed analysis, and paper tables.
+
+Nothing in this module invents numbers: every table is built from summary.csv / metrics_long.csv /
+phase tables of real runs. A paper table whose inputs do not exist is skipped and listed with the
+reason in results/tables/TABLES_README.txt.
+"""
 
 import os
 import glob
@@ -6,11 +11,12 @@ import re
 import yaml
 import numpy as np
 import pandas as pd
-from sklearn.metrics import cohen_kappa_score, roc_auc_score
+from scipy.stats import rankdata, ttest_ind
 
-from src.evaluation.stats import paired_bootstrap, holm
+from src.evaluation.cutpoints import qwk_from_pred
+from src.evaluation.stats import holm
 from src.utils.config import find_exp, resolve
-from src.utils.io_utils import SUMMARY_COLUMNS, fmt2
+from src.utils.io_utils import SUMMARY_COLUMNS, fmt2, normalize_zoo_row
 
 
 PHASE_ORDER = [
@@ -19,21 +25,32 @@ PHASE_ORDER = [
     'phase2b_preprocess',
     'phase3a_pretrain',
     'phase3b_joint',
+    'phase3c_seeds',
+    'phase3c_ssl',
+    'phase3c_dose',
+    'phase3c_arch',
     'phase4_label_loss',
+    'phase4j_label_loss',
     'phase5_architecture',
     'phase6_domain_gen',
-    'phase7_feature_balance',
     'phase8_inference',
     'phase9_final',
+    'phase10_multisource',
 ]
 
+EXT_DATASETS_ORDER = ['messidor', 'ddr', 'deepdrid', 'idrid']
+
 MASTER_TABLE_COLS = [
-    'phase', 'experiment', 'description', 'protocol', 'ext_set',
-    'oof_qwk', 'test_acc', 'test_qwk', 'test_f1_macro', 'test_adj_acc',
-    'test_bin_acc', 'test_bin_auroc', 'test_sens_at_spec90',
-    'ext_acc', 'ext_qwk', 'ext_mild_recall', 'ext_pred_nodr_share',
-    'ext_bin_acc', 'ext_bin_auroc', 'ece_test', 'gpu_hours',
-    'decision', 'is_winner'
+    'phase', 'experiment', 'description', 'protocol', 'ext_set', 'train_sources', 'heldout_sets', 'seed',
+    'head_type', 'oof_qwk', 'oof_acc', 'oof_bin_auroc',
+    'test_acc', 'test_qwk', 'test_f1_macro', 'test_adj_acc', 'test_bin_acc', 'test_bin_auroc', 'test_sens_at_spec90',
+    'ext_acc', 'ext_qwk', 'ext_mild_recall', 'ext_pred_nodr_share', 'ext_bin_acc', 'ext_bin_auroc',
+    'ddr_test_qwk', 'ddr_test_acc', 'ddr_test_bin_auroc', 'ddr_test_mild_recall',
+    'deepdrid_test_qwk', 'deepdrid_test_acc', 'deepdrid_test_bin_auroc', 'deepdrid_test_mild_recall',
+    'idrid_test_qwk', 'idrid_test_acc', 'idrid_test_bin_auroc', 'idrid_test_mild_recall',
+    'ext_mean_test_qwk', 'ext_mean_test_acc', 'ext_mean_test_bin_auroc', 'ext_mean_test_mild_recall',
+    'ext_mean_dev_qwk', 'ext_full1744_acc', 'ext_full1744_qwk',
+    'ece_test', 'ece_ext', 'gpu_hours', 'decision', 'is_winner',
 ]
 
 
@@ -45,50 +62,30 @@ def _to_latex_booktabs(df: pd.DataFrame, highlight_cols: list = None) -> str:
     """Format DataFrame as a LaTeX booktabs table with best in bold and second underlined."""
     if df.empty:
         return ""
-
-    df_str = df.copy().astype(str)
-
+    df_str = df.copy().astype(object).where(pd.notna(df), '').astype(str)
     if highlight_cols:
         for col in highlight_cols:
             if col not in df.columns:
                 continue
-            # Try parsing numeric values
             vals = pd.to_numeric(df[col], errors='coerce')
             valid_vals = vals.dropna()
             if len(valid_vals) < 2:
                 continue
-            # Assume higher is better for performance metrics, unless ECE/loss/gap
-            lower_is_better = any(term in col.lower() for term in ['ece', 'loss', 'mae', 'gap'])
+            lower_is_better = any(term in col.lower() for term in ['ece', 'loss', 'mae', 'gap', 'nodr'])
             sorted_unique = sorted(valid_vals.unique(), reverse=not lower_is_better)
-            if len(sorted_unique) >= 1:
-                best_val = sorted_unique[0]
-                for idx in vals[vals == best_val].index:
-                    df_str.loc[idx, col] = f"\\textbf{{{df_str.loc[idx, col]}}}"
+            for idx in vals[vals == sorted_unique[0]].index:
+                df_str.loc[idx, col] = f"\\textbf{{{df_str.loc[idx, col]}}}"
             if len(sorted_unique) >= 2:
-                second_val = sorted_unique[1]
-                for idx in vals[vals == second_val].index:
+                for idx in vals[vals == sorted_unique[1]].index:
                     df_str.loc[idx, col] = f"\\underline{{{df_str.loc[idx, col]}}}"
-
     cols = df_str.columns.tolist()
-    header = " & ".join([c.replace('_', '\\_') for c in cols]) + " \\\\\n"
-    rows = []
-    for _, r in df_str.iterrows():
-        rows.append(" & ".join(r.values) + " \\\\\n")
-
+    header = " & ".join([str(c).replace('_', '\\_') for c in cols]) + " \\\\\n"
+    rows = [" & ".join(str(v).replace('_', '\\_') if not str(v).startswith('\\') else str(v)
+                       for v in r.values) + " \\\\\n" for _, r in df_str.iterrows()]
     col_align = "l" + "r" * (len(cols) - 1)
-    latex = (
-        "\\begin{table}[htbp]\n"
-        "\\centering\n"
-        f"\\begin{{tabular}}{{{col_align}}}\n"
-        "\\toprule\n"
-        f"{header}"
-        "\\midrule\n"
-        f"{''.join(rows)}"
-        "\\bottomrule\n"
-        "\\end{tabular}\n"
-        "\\end{table}\n"
-    )
-    return latex
+    return ("\\begin{table}[htbp]\n\\centering\n"
+            f"\\begin{{tabular}}{{{col_align}}}\n\\toprule\n{header}\\midrule\n{''.join(rows)}"
+            "\\bottomrule\n\\end{tabular}\n\\end{table}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +93,7 @@ def _to_latex_booktabs(df: pd.DataFrame, highlight_cols: list = None) -> str:
 # ---------------------------------------------------------------------------
 
 def selection_guard(requested_path: str):
-    """Enforce rule: APTOS test set and Messidor TEST split must NEVER be used for selection."""
+    """Enforce rule: APTOS test set and every external TEST split must NEVER be used for selection."""
     lower = str(requested_path).lower()
     if 'test' in lower and ('oof' not in lower and 'dev' not in lower):
         raise PermissionError(
@@ -105,298 +102,319 @@ def selection_guard(requested_path: str):
 
 
 # ---------------------------------------------------------------------------
+# Fast metrics for the paired bootstrap
+# ---------------------------------------------------------------------------
+
+def _qwk(y, P):
+    return qwk_from_pred(y, P.argmax(axis=1))
+
+
+def _auroc(y, P):
+    yb = (y >= 2).astype(int)
+    npos, nneg = int(yb.sum()), int((1 - yb).sum())
+    if npos == 0 or nneg == 0:
+        return 0.5
+    r = rankdata(P[:, 2:].sum(axis=1))
+    return float((r[yb == 1].sum() - npos * (npos + 1) / 2.0) / (npos * nneg))
+
+
+def _mild(y, P):
+    m = (y == 1)
+    return float((P.argmax(axis=1)[m] == 1).mean()) if m.any() else 0.0
+
+
+def _paired(y, Pa, Pb, fn, B, seed=0, alpha=0.05):
+    """Paired image bootstrap of fn(arm) - fn(ref). Returns delta, (lo, hi), p_two_sided, draws."""
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    d = np.empty(B)
+    for b in range(B):
+        i = rng.integers(0, n, n)
+        d[b] = fn(y[i], Pa[i]) - fn(y[i], Pb[i])
+    delta = fn(y, Pa) - fn(y, Pb)
+    lo, hi = np.percentile(d, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    p = min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()))
+    return float(delta), (float(lo), float(hi)), float(p), d
+
+
+def _paired_multi(per_ds, fn, B, seed=0):
+    """Paired bootstrap of the MEAN over datasets of fn, each dataset resampled independently.
+
+    per_ds: list of (y, P_arm, P_ref). Returns delta, (lo, hi), p_two_sided.
+    """
+    rng = np.random.default_rng(seed)
+    d = np.empty(B)
+    for b in range(B):
+        vals = []
+        for y, Pa, Pb in per_ds:
+            i = rng.integers(0, len(y), len(y))
+            vals.append(fn(y[i], Pa[i]) - fn(y[i], Pb[i]))
+        d[b] = np.mean(vals)
+    delta = float(np.mean([fn(y, Pa) - fn(y, Pb) for y, Pa, Pb in per_ds]))
+    lo, hi = np.percentile(d, [2.5, 97.5])
+    p = min(1.0, 2 * min((d <= 0).mean(), (d >= 0).mean()))
+    return delta, (float(lo), float(hi)), float(p)
+
+
+def _load_npz(path):
+    selection_guard(path)
+    with np.load(path, allow_pickle=True) as f:
+        y = np.asarray(f['y_true'] if 'y_true' in f.files else f['y'], dtype=int)
+        P = np.asarray(f['P'] if 'P' in f.files else f['y_prob'])
+        ids = [str(i) for i in f['ids']]
+    return ids, y, P
+
+
+def _align(arm, ref, what, ref_tag, phase):
+    """Match arm and reference predictions of one DEV set by image id -> (y, P_arm, P_ref)."""
+    ids_a, ya, Pa = arm
+    ids_r, yr, Pr = ref
+    pos = {i: k for k, i in enumerate(ids_a)}
+    keep = [k for k, i in enumerate(ids_r) if i in pos]
+    if len(keep) != len(ids_r) or len(keep) != len(ids_a):
+        print(f'phase_select {phase}: {what}: DEV ids differ from {ref_tag} -> comparing the {len(keep)} common images')
+    if not keep:
+        raise ValueError(f'phase_select {phase}: {what} has no DEV image in common with {ref_tag}')
+    idx_a = np.array([pos[ids_r[k]] for k in keep], dtype=int)
+    idx_r = np.array(keep, dtype=int)
+    assert np.array_equal(ya[idx_a], yr[idx_r]), f'{what}: DEV labels mismatch vs {ref_tag}'
+    return yr[idx_r], Pa[idx_a], Pr[idx_r]
+
+
+def _dev_file(exp_dir, ds):
+    p = os.path.join(exp_dir, f'predictions_{ds}_dev.npz')
+    if os.path.isfile(p):
+        return p
+    if ds == 'messidor':
+        legacy = os.path.join(exp_dir, 'predictions_external_dev.npz')
+        if os.path.isfile(legacy):
+            return legacy
+    return None
+
+
+def _train_sources_of(summary_row, exp_dir):
+    ts = str(summary_row.get('train_sources', '') or '')
+    if ts and ts != 'nan':
+        return set(ts.split(','))
+    cfg_p = os.path.join(exp_dir, 'config.yaml')
+    if os.path.isfile(cfg_p):
+        from src.utils.config import train_sources
+        return set(train_sources(yaml.safe_load(open(cfg_p)) or {}))
+    return {'aptos'}
+
+
+# ---------------------------------------------------------------------------
 # phase_select
 # ---------------------------------------------------------------------------
 
-def phase_select(phase: str, reference: str, design: str = 'parallel'):
+def phase_select(phase: str, reference: str, design: str = 'parallel', cfg: dict = None):
     """Compare all experiments of a phase against a reference and select the winner.
 
-    Args:
-        phase: Name of the phase folder (e.g. 'phase2a_recipe').
-        reference: Reference experiment tag (or @phase reference).
-        design: 'parallel' or other experiment design.
+    Two endpoints are always computed and both decisions are written to the phase table:
+
+    original (pre-registered): ADOPT iff the paired-OOF Delta QWK CI lower bound > 0 and the referable
+        AUROC / OOF QWK guards hold (phase-specific rules for phase2a, phase2b, phase6 kept unchanged).
+    amended: primary = mean over held-out external DEV sets (cfg select_dev_sets) of the QWK,
+        paired bootstrap with every dataset resampled independently. ADOPT iff its CI lower bound > 0,
+        Delta OOF QWK >= -noninf_margin (APTOS non-inferiority) and Delta mean-DEV referable AUROC
+        >= -noninf_margin. In-domain differences are additionally tested for equivalence (TOST via the
+        90 % CI inside +-tost_margin).
+
+    cfg['select_endpoint'] picks the endpoint that sets `decision`, the winner and WINNER.txt.
+    cfg['select_report_only'] = true writes phase_table_<endpoint>.csv only.
     """
+    cfg = cfg or {}
+    endpoint = cfg.get('select_endpoint', 'amended')
+    report_only = bool(cfg.get('select_report_only', False))
+    dev_sets = list(cfg.get('select_dev_sets') or EXT_DATASETS_ORDER)
+    noninf = float(cfg.get('noninf_margin', 0.005))
+    tost_margin = float(cfg.get('tost_margin', 0.01))
+
     ref_tag = resolve(reference)
     ref_dir = find_exp(ref_tag)
-
-    # 1. Load reference OOF and DEV data (guard check)
     ref_oof_path = os.path.join(ref_dir, 'oof.npz')
-    ref_dev_path = os.path.join(ref_dir, 'predictions_external_dev.npz')
-    selection_guard(ref_oof_path)
-    selection_guard(ref_dev_path)
-
     if not os.path.isfile(ref_oof_path):
         raise FileNotFoundError(f"Reference OOF file not found: {ref_oof_path}")
-    if not os.path.isfile(ref_dev_path):
-        raise FileNotFoundError(f"Reference DEV file not found: {ref_dev_path}")
+    oof_ids_ref, y_oof_ref, P_oof_ref = _load_npz(ref_oof_path)
+    ref_dev = {}
+    for ds in dev_sets:
+        p = _dev_file(ref_dir, ds)
+        if p:
+            ref_dev[ds] = _load_npz(p)
+    if 'messidor' not in ref_dev and endpoint == 'original':
+        raise FileNotFoundError(f"Reference Messidor DEV predictions not found in {ref_dir}")
+    ref_summary = pd.read_csv(os.path.join(ref_dir, 'summary.csv')).iloc[0].to_dict()
+    ref_sources = _train_sources_of(ref_summary, ref_dir)
 
-    with np.load(ref_oof_path, allow_pickle=True) as f:
-        y_oof_ref = f['y']
-        P_oof_ref = f['P']
-    with np.load(ref_dev_path, allow_pickle=True) as f:
-        y_dev_ref = f['y']
-        P_dev_ref = f['P']
-
-    # Metric functions for paired bootstrap
-    def _qwk_fn(y_true, P_prob):
-        return cohen_kappa_score(y_true, P_prob.argmax(axis=1), weights='quadratic')
-
-    def _bin_auroc_fn(y_true, P_prob):
-        y_bin = (y_true >= 2).astype(int)
-        if len(np.unique(y_bin)) < 2:
-            return 0.5
-        s = P_prob[:, 2:].sum(axis=1)
-        return roc_auc_score(y_bin, s)
-
-    def _mild_rec_fn(y_true, P_prob):
-        mask1 = (y_true == 1)
-        if not mask1.any():
-            return 0.0
-        preds = P_prob.argmax(axis=1)
-        return float((preds[mask1] == 1).mean())
-
-    # 2. Discover all experiment folders in this phase
     phase_dir = os.path.join('results', phase)
-    exp_dirs = sorted([
-        d for d in glob.glob(os.path.join(phase_dir, '*'))
-        if os.path.isdir(d) and os.path.isfile(os.path.join(d, 'summary.csv'))
-    ])
+    exp_dirs = sorted(d for d in glob.glob(os.path.join(phase_dir, '*'))
+                      if os.path.isdir(d) and os.path.isfile(os.path.join(d, 'summary.csv')))
 
-    records = []
-    p_values_for_holm = []
-    exp_summaries = {}
-
+    records, exp_summaries = [], {}
     for ed in exp_dirs:
         tag = os.path.basename(ed)
-        sum_df = pd.read_csv(os.path.join(ed, 'summary.csv'))
-        exp_summaries[tag] = sum_df.iloc[0].to_dict()
-
+        summ = pd.read_csv(os.path.join(ed, 'summary.csv')).iloc[0].to_dict()
+        exp_summaries[tag] = summ
+        eligible = str(summ.get('winner_eligible', 'true')).lower() != 'false'
         if tag == ref_tag:
-            # Reference row
-            records.append({
-                'experiment': tag,
-                'is_ref': True,
-                'd_oof_qwk': 0.0,
-                'ci_lo': 0.0,
-                'ci_hi': 0.0,
-                'raw_p': 1.0,
-                'd_bin_auroc': 0.0,
-                'd_extdev_qwk': 0.0,
-                'd_extdev_mild_recall': 0.0,
-                'winner_eligible': str(exp_summaries[tag].get('winner_eligible', 'true')).lower() != 'false',
-                'oof_qwk': float(exp_summaries[tag].get('oof_qwk', 0.0)),
-                'extdev_qwk': float(exp_summaries[tag].get('extdev_qwk', 0.0)),
-                'extdev_bin_auroc': float(exp_summaries[tag].get('extdev_bin_auroc', 0.0)),
-                'oof_qwk_full': float(_qwk_fn(y_oof_ref, P_oof_ref)),
-                'extdev_qwk_full': float(_qwk_fn(y_dev_ref, P_dev_ref)),
-            })
+            records.append({'experiment': tag, 'is_ref': True, 'winner_eligible': eligible,
+                            'oof_qwk_full': _qwk(y_oof_ref, P_oof_ref),
+                            'dev_mean_qwk_full': float(np.mean([_qwk(v[1], v[2]) for d, v in ref_dev.items()
+                                                                if d not in ref_sources] or [np.nan]))})
             continue
+        oof_path = os.path.join(ed, 'oof.npz')
+        if not os.path.isfile(oof_path):
+            print(f'phase_select {phase}: {tag} has no oof.npz (not a trained arm) -> skipped')
+            continue
+        oof_ids, y_oof, P_oof = _load_npz(oof_path)
+        assert np.array_equal(y_oof_ref, y_oof), f"OOF labels mismatch between {ref_tag} and {tag}"
+        r = {'experiment': tag, 'is_ref': False, 'winner_eligible': eligible}
+        r['d_oof_qwk'], (r['ci_lo'], r['ci_hi']), r['raw_p'], draws = _paired(y_oof, P_oof, P_oof_ref, _qwk, 10000)
+        lo90, hi90 = np.percentile(draws, [5, 95])
+        r['oof_tost_lo90'], r['oof_tost_hi90'] = float(lo90), float(hi90)
+        r['oof_equivalent'] = bool(lo90 > -tost_margin and hi90 < tost_margin)
+        r['d_bin_auroc'] = _paired(y_oof, P_oof, P_oof_ref, _auroc, 2000)[0]
+        r['oof_qwk_full'] = _qwk(y_oof, P_oof)
 
-        # Load experiment OOF and DEV data
-        exp_oof_path = os.path.join(ed, 'oof.npz')
-        exp_dev_path = os.path.join(ed, 'predictions_external_dev.npz')
-        selection_guard(exp_oof_path)
-        selection_guard(exp_dev_path)
+        arm_dev = {}
+        for ds in dev_sets:
+            p = _dev_file(ed, ds)
+            if p:
+                arm_dev[ds] = _load_npz(p)
+        # Messidor DEV deltas (used by the original phase2b / phase6 rules)
+        if 'messidor' in arm_dev and 'messidor' in ref_dev:
+            yd, Pd, Pr = _align(arm_dev['messidor'], ref_dev['messidor'], f'{tag}/messidor', ref_tag, phase)
+            r['d_extdev_qwk'], (r['d_extdev_qwk_ci_lo'], _), _, _ = _paired(yd, Pd, Pr, _qwk, 2000)
+            r['d_extdev_mild_recall'], (r['d_extdev_mild_ci_lo'], _), _, _ = _paired(yd, Pd, Pr, _mild, 2000)
+        else:
+            r.update({'d_extdev_qwk': np.nan, 'd_extdev_qwk_ci_lo': np.nan, 'd_extdev_mild_recall': np.nan,
+                      'd_extdev_mild_ci_lo': np.nan})
 
-        with np.load(exp_oof_path, allow_pickle=True) as f:
-            y_oof_exp = f['y']
-            P_oof_exp = f['P']
-        with np.load(exp_dev_path, allow_pickle=True) as f:
-            y_dev_exp = f['y']
-            P_dev_exp = f['P']
+        # Amended endpoint over held-out DEV sets common to reference and arm
+        arm_sources = _train_sources_of(summ, ed)
+        common = [ds for ds in dev_sets if ds not in arm_sources and ds not in ref_sources]
+        if endpoint == 'amended':
+            missing = [f'{who}:{ds}' for ds in common for who, dd in ((tag, arm_dev), (ref_tag, ref_dev))
+                       if ds not in dd]
+            if missing:
+                raise FileNotFoundError(
+                    f'phase_select {phase}: DEV predictions missing for {missing}. Run '
+                    f'--mode evaluate (or evaluate_all) for these tags first, or restrict select_dev_sets.')
+        common = [ds for ds in common if ds in arm_dev and ds in ref_dev]
+        per_ds = [_align(arm_dev[ds], ref_dev[ds], f'{tag}/{ds}', ref_tag, phase) for ds in common]
+        r['dev_sets_used'] = ','.join(common)
+        if per_ds:
+            r['d_dev_mean_qwk'], (r['d_dev_mean_qwk_ci_lo'], r['d_dev_mean_qwk_ci_hi']), r['dev_p'] = \
+                _paired_multi(per_ds, _qwk, 2000)
+            r['d_dev_mean_auroc'] = _paired_multi(per_ds, _auroc, 1000)[0]
+            r['d_dev_mean_mild_recall'] = _paired_multi(per_ds, _mild, 1000)[0]
+            r['dev_mean_qwk_full'] = float(np.mean([_qwk(y, Pa) for y, Pa, _ in per_ds]))
+        else:
+            r.update({'d_dev_mean_qwk': np.nan, 'd_dev_mean_qwk_ci_lo': np.nan, 'd_dev_mean_qwk_ci_hi': np.nan,
+                      'dev_p': 1.0, 'd_dev_mean_auroc': np.nan, 'd_dev_mean_mild_recall': np.nan,
+                      'dev_mean_qwk_full': np.nan})
+        records.append(r)
 
-        # Ensure ground truth matching
-        assert np.array_equal(y_oof_ref, y_oof_exp), f"OOF labels mismatch between {ref_tag} and {tag}"
-        assert np.array_equal(y_dev_ref, y_dev_exp), f"DEV labels mismatch between {ref_tag} and {tag}"
+    arms = [r for r in records if not r['is_ref']]
+    if arms:
+        for r, p in zip(arms, holm([r['raw_p'] for r in arms])):
+            r['p_holm'] = float(p)
+        for r, p in zip(arms, holm([r['dev_p'] for r in arms])):
+            r['dev_p_holm'] = float(p)
 
-        # Paired bootstrap
-        d_qwk, ci_qwk, p_qwk = paired_bootstrap(y_oof_ref, P_oof_exp, P_oof_ref, _qwk_fn, B=10000, seed=0)
-        d_auroc, _, _ = paired_bootstrap(y_oof_ref, P_oof_exp, P_oof_ref, _bin_auroc_fn, B=2000, seed=0)
-        d_dev_qwk, ci_dev_qwk, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _qwk_fn, B=2000, seed=0)
-        d_dev_mild, ci_dev_mild, _ = paired_bootstrap(y_dev_ref, P_dev_exp, P_dev_ref, _mild_rec_fn, B=2000, seed=0)
-
-        p_values_for_holm.append(p_qwk)
-        eligible = str(exp_summaries[tag].get('winner_eligible', 'true')).lower() != 'false'
-
-        records.append({
-            'experiment': tag,
-            'is_ref': False,
-            'd_oof_qwk': d_qwk,
-            'ci_lo': ci_qwk[0],
-            'ci_hi': ci_qwk[1],
-            'raw_p': p_qwk,
-            'd_bin_auroc': d_auroc,
-            'd_extdev_qwk': d_dev_qwk,
-            'd_extdev_qwk_ci_lo': ci_dev_qwk[0],
-            'd_extdev_mild_recall': d_dev_mild,
-            'd_extdev_mild_ci_lo': ci_dev_mild[0],
-            'winner_eligible': eligible,
-            'oof_qwk': float(exp_summaries[tag].get('oof_qwk', 0.0)),
-            'extdev_qwk': float(exp_summaries[tag].get('extdev_qwk', 0.0)),
-            'extdev_bin_auroc': float(exp_summaries[tag].get('extdev_bin_auroc', 0.0)),
-            'oof_qwk_full': float(_qwk_fn(y_oof_exp, P_oof_exp)),
-            'extdev_qwk_full': float(_qwk_fn(y_dev_exp, P_dev_exp)),
-        })
-
-    # Apply Holm step-down correction across all candidate experiments in the phase
-    if p_values_for_holm:
-        adj_p = holm(p_values_for_holm)
-        non_ref_idx = 0
-        for r in records:
-            if not r['is_ref']:
-                r['p_holm'] = adj_p[non_ref_idx]
-                non_ref_idx += 1
-            else:
-                r['p_holm'] = 1.0
-    else:
-        for r in records:
-            r['p_holm'] = 1.0
-
-    # 3. Decision rules (S1): ADOPT, TENTATIVE, REJECT, REFERENCE
+    # Decisions under both endpoints
     for r in records:
         if r['is_ref']:
-            r['decision'] = 'REFERENCE'
+            r['decision_original'] = r['decision_amended'] = 'REFERENCE'
+            continue
+        # original rule (unchanged)
+        if phase == 'phase6_domain_gen':
+            orig = 'ADOPT' if (r['d_extdev_qwk'] > 0.0 and r['d_oof_qwk'] >= -0.005) else 'REJECT'
+        elif phase == 'phase2b_preprocess':
+            orig = 'ADOPT' if (r['d_extdev_qwk_ci_lo'] > 0.0 and r['d_extdev_qwk'] > 0.05
+                               and r['d_extdev_mild_ci_lo'] > 0.0 and r['d_oof_qwk'] >= -0.005
+                               and r['d_bin_auroc'] >= -0.005) else 'REJECT'
+        elif r['ci_lo'] > 0.0 and r['d_bin_auroc'] >= -0.005 and r['d_oof_qwk'] >= -0.005:
+            orig = 'ADOPT'
+        elif phase == 'phase2a_recipe' and r['d_oof_qwk'] >= 0.005:
+            orig = 'TENTATIVE'
         else:
-            if phase == 'phase6_domain_gen':
-                # Primary: Messidor-DEV QWK gain, OOF QWK drop <= 0.005
-                if r['d_extdev_qwk'] > 0.0 and r['d_oof_qwk'] >= -0.005:
-                    r['decision'] = 'ADOPT'
-                else:
-                    r['decision'] = 'REJECT'
-            elif phase == 'phase2b_preprocess':
-                # Pre-registered JOINT rule (MODAL_PART2 S8): preprocessing parity is judged on
-                # OOF QWK *and* Messidor-DEV QWK / Mild recall together, because the point of the
-                # change is train<->test preprocessing consistency across datasets, which shows up
-                # externally while internal OOF QWK stays flat.
-                if (r['d_extdev_qwk_ci_lo'] > 0.0 and r['d_extdev_qwk'] > 0.05
-                        and r['d_extdev_mild_ci_lo'] > 0.0
-                        and r['d_oof_qwk'] >= -0.005 and r['d_bin_auroc'] >= -0.005):
-                    r['decision'] = 'ADOPT'
-                else:
-                    r['decision'] = 'REJECT'
-            # ADOPT: 95% CI of primary gain excludes 0 (ci_lo > 0) AND guard tolerance met
-            # Guard tolerance: referable AUROC drop >= -0.005, OOF QWK drop >= -0.005
-            elif r['ci_lo'] > 0.0 and r['d_bin_auroc'] >= -0.005 and r['d_oof_qwk'] >= -0.005:
-                r['decision'] = 'ADOPT'
-            elif phase == 'phase2a_recipe' and r['d_oof_qwk'] >= 0.005:
-                # TENTATIVE allowed ONLY for the a-priori regularisation items of phase2a
-                r['decision'] = 'TENTATIVE'
-            else:
-                r['decision'] = 'REJECT'
+            orig = 'REJECT'
+        r['decision_original'] = orig
+        lo = r.get('d_dev_mean_qwk_ci_lo')
+        auc = r.get('d_dev_mean_auroc')
+        amended_ok = (lo is not None and not np.isnan(lo) and lo > 0.0 and r['d_oof_qwk'] >= -noninf
+                      and (auc is None or np.isnan(auc) or auc >= -noninf))
+        amended_ok = amended_ok and r.get('dev_p_holm', 1.0) < 0.05   # Holm inside the phase (Part 1 S1)
+        r['decision_amended'] = 'ADOPT' if amended_ok else 'REJECT'
+    for r in records:
+        r['decision'] = r[f'decision_{endpoint}']
 
-    # 4. Winner selection
-    # Candidates: REFERENCE + (ADOPT/TENTATIVE rows with winner_eligible=true)
-    candidates = [
-        r for r in records
-        if (r['decision'] in ['REFERENCE', 'ADOPT', 'TENTATIVE']) and r['winner_eligible']
-    ]
-
+    # Winner
+    candidates = [r for r in records if r['decision'] in ('REFERENCE', 'ADOPT', 'TENTATIVE') and r['winner_eligible']]
     carried_reference = False
     if not candidates:
-        # Fallback to reference (only possible when the reference is a member of this phase)
         candidates = [r for r in records if r['is_ref']]
-
     if not candidates:
-        # Every in-phase experiment was REJECTED and the reference lives in ANOTHER phase
-        # (--reference @phaseX resolves to a tag under results/phaseX/), so there is no is_ref
-        # row here to fall back to. Carry the reference forward unchanged: find_exp() globs
-        # results/phase*/, so later phases resolve this cross-phase winner tag fine.
-        candidates = [{
-            'experiment': ref_tag,
-            'is_ref': True,
-            'decision': 'REFERENCE',
-            'd_oof_qwk': 0.0,
-            'd_bin_auroc': 0.0,
-            'oof_qwk': float(_qwk_fn(y_oof_ref, P_oof_ref)),
-            'extdev_qwk': float(_qwk_fn(y_dev_ref, P_dev_ref)),
-            'oof_qwk_full': float(_qwk_fn(y_oof_ref, P_oof_ref)),
-            'extdev_qwk_full': float(_qwk_fn(y_dev_ref, P_dev_ref)),
-        }]
+        candidates = [{'experiment': ref_tag, 'is_ref': True, 'decision': 'REFERENCE',
+                       'oof_qwk_full': _qwk(y_oof_ref, P_oof_ref),
+                       'dev_mean_qwk_full': float(np.mean([_qwk(v[1], v[2]) for d, v in ref_dev.items()
+                                                           if d not in ref_sources] or [np.nan]))}]
         carried_reference = True
-        print(f"phase_select {phase}: no arm met the adoption rule -> carrying the "
-              f"cross-phase reference {ref_tag} forward as this phase's winner")
-
-    if phase == 'phase6_domain_gen':
-        # Phase 6 uses DEV QWK first, then OOF QWK as a guard (OOF drop <= 0.005)
-        valid_candidates = [c for c in candidates if c.get('d_oof_qwk', 0.0) >= -0.005]
-        if not valid_candidates:
-            valid_candidates = candidates
-        # Rank on full-precision QWK: summary.csv stores 2-dp values, which would turn real
-        # differences into ties silently decided by the AUROC tie-break.
-        candidates_sorted = sorted(
-            valid_candidates,
-            key=lambda x: (x.get('extdev_qwk_full', x.get('extdev_qwk', 0.0)),
-                           x.get('oof_qwk_full', x.get('oof_qwk', 0.0))),
-            reverse=True,
-        )
+    if endpoint == 'amended':
+        # rank on the paired delta vs the reference (computed on the same held-out sets for both); reference = 0
+        key = lambda x: (0.0 if x.get('is_ref') else np.nan_to_num(x.get('d_dev_mean_qwk', np.nan), nan=-9.0),
+                         x.get('oof_qwk_full', 0.0))
+    elif phase == 'phase6_domain_gen':
+        valid = [c for c in candidates if c.get('d_oof_qwk', 0.0) >= -0.005] or candidates
+        candidates = valid
+        key = lambda x: (x.get('d_extdev_qwk', 0.0) if not x.get('is_ref') else 0.0, x.get('oof_qwk_full', 0.0))
     else:
-        # Default: best OOF QWK (ties: referable AUROC). Full precision, same reason.
-        candidates_sorted = sorted(
-            candidates,
-            key=lambda x: (x.get('oof_qwk_full', x.get('oof_qwk', 0.0)),
-                           x.get('d_bin_auroc', 0.0)),
-            reverse=True,
-        )
-
-    winner_record = candidates_sorted[0]
+        key = lambda x: (x.get('oof_qwk_full', 0.0), x.get('d_bin_auroc', 0.0) or 0.0)
+    winner_record = sorted(candidates, key=key, reverse=True)[0]
     winner_tag = winner_record['experiment']
 
-    # 5. Build phase_table.csv and phase_table.tex
-    phase_table_rows = []
+    # Phase tables
+    rows = []
+    fmt_keys = ['d_oof_qwk', 'ci_lo', 'ci_hi', 'p_holm', 'd_bin_auroc', 'oof_tost_lo90', 'oof_tost_hi90',
+                'd_extdev_qwk', 'd_extdev_mild_recall', 'd_dev_mean_qwk', 'd_dev_mean_qwk_ci_lo',
+                'd_dev_mean_qwk_ci_hi', 'dev_p_holm', 'd_dev_mean_auroc', 'd_dev_mean_mild_recall']
     for r in records:
-        tag = r['experiment']
-        row_dict = exp_summaries[tag].copy()
-        row_dict.update({
-            'experiment': tag,
-            'description': row_dict.get('description', ''),
-            'd_oof_qwk': fmt2(r['d_oof_qwk']),
-            'ci_lo': fmt2(r['ci_lo']),
-            'ci_hi': fmt2(r['ci_hi']),
-            'p_holm': fmt2(r['p_holm']),
-            'd_bin_auroc': fmt2(r['d_bin_auroc']),
-            'd_extdev_qwk': fmt2(r['d_extdev_qwk']),
-            'd_extdev_mild_recall': fmt2(r['d_extdev_mild_recall']),
-            'decision': r['decision'],
-            'winner': (tag == winner_tag),
-        })
-        phase_table_rows.append(row_dict)
+        row = dict(exp_summaries.get(r['experiment'], {'experiment': r['experiment']}))
+        row.update({k: fmt2(r.get(k)) if r.get(k) is not None else '' for k in fmt_keys})
+        row.update({'experiment': r['experiment'], 'decision': r['decision'],
+                    'decision_original': r['decision_original'], 'decision_amended': r['decision_amended'],
+                    'endpoint': endpoint, 'oof_equivalent': r.get('oof_equivalent', ''),
+                    'dev_sets_used': r.get('dev_sets_used', ''), 'winner': r['experiment'] == winner_tag})
+        rows.append(row)
+    phase_df = pd.DataFrame(rows)
+    phase_df.to_csv(os.path.join(phase_dir, f'phase_table_{endpoint}.csv'), index=False)
+    if report_only:
+        print(f"phase_select {phase} ({endpoint}, report only): best arm {winner_tag}; "
+              f"WINNER.txt and summaries untouched -> results/{phase}/phase_table_{endpoint}.csv")
+        return winner_tag
 
-        # Update decision and is_winner in each experiment's summary.csv
-        exp_sum_path = os.path.join(find_exp(tag), 'summary.csv')
-        cur_sum_df = pd.read_csv(exp_sum_path)
-        cur_sum_df['decision'] = str(r['decision'])
-        cur_sum_df['is_winner'] = bool(tag == winner_tag)
-        cur_sum_df.to_csv(exp_sum_path, index=False)
-
-    phase_df = pd.DataFrame(phase_table_rows)
-    phase_csv_path = os.path.join(phase_dir, 'phase_table.csv')
-    phase_tex_path = os.path.join(phase_dir, 'phase_table.tex')
-    winner_txt_path = os.path.join(phase_dir, 'WINNER.txt')
-
-    phase_df.to_csv(phase_csv_path, index=False)
-
-    tex_content = _to_latex_booktabs(
-        phase_df[[
-            'experiment', 'description', 'oof_qwk', 'd_oof_qwk', 'ci_lo', 'ci_hi',
-            'p_holm', 'extdev_qwk', 'decision', 'winner'
-        ]],
-        highlight_cols=['oof_qwk', 'extdev_qwk', 'd_oof_qwk']
-    )
-    with open(phase_tex_path, 'w') as f_tex:
-        f_tex.write(tex_content)
-
-    # Write WINNER.txt: tag on the first line, then a one-line reason
-    reason = (
-        f"Selected as phase winner: decision={winner_record['decision']}, "
-        f"OOF QWK={winner_record.get('oof_qwk', winner_record.get('oof_qwk_full', 0.0)):.4f}, "
-        f"DEV QWK={winner_record.get('extdev_qwk', winner_record.get('extdev_qwk_full', 0.0)):.4f}."
-        + (" No in-phase arm met the adoption rule; the reference is carried forward unchanged."
-           if carried_reference else "")
-    )
-    with open(winner_txt_path, 'w') as f_win:
+    phase_df.to_csv(os.path.join(phase_dir, 'phase_table.csv'), index=False)
+    tex_cols = [c for c in ['experiment', 'oof_qwk', 'd_oof_qwk', 'ci_lo', 'ci_hi', 'p_holm', 'd_dev_mean_qwk',
+                            'd_dev_mean_qwk_ci_lo', 'decision_original', 'decision_amended', 'winner']
+                if c in phase_df.columns]
+    with open(os.path.join(phase_dir, 'phase_table.tex'), 'w') as f_tex:
+        f_tex.write(_to_latex_booktabs(phase_df[tex_cols], highlight_cols=['oof_qwk', 'd_dev_mean_qwk']))
+    for r in records:
+        sp = os.path.join(find_exp(r['experiment']), 'summary.csv')
+        sdf = pd.read_csv(sp)
+        sdf['decision'] = str(r['decision'])
+        sdf['is_winner'] = bool(r['experiment'] == winner_tag)
+        sdf.to_csv(sp, index=False)
+    reason = (f"Selected as phase winner ({endpoint} endpoint): decision={winner_record['decision']}, "
+              f"OOF QWK={winner_record.get('oof_qwk_full', float('nan')):.4f}, "
+              f"mean external DEV QWK={winner_record.get('dev_mean_qwk_full', float('nan')):.4f}."
+              + (" No in-phase arm met the adoption rule; the reference is carried forward unchanged."
+                 if carried_reference else ""))
+    with open(os.path.join(phase_dir, 'WINNER.txt'), 'w') as f_win:
         f_win.write(f"{winner_tag}\n{reason}\n")
-
-    print(f"phase_select for {phase}: WINNER is {winner_tag}. Table written to {phase_csv_path}")
+    print(f"phase_select for {phase} ({endpoint}): WINNER is {winner_tag}. "
+          f"Table written to {os.path.join(phase_dir, 'phase_table.csv')}")
     return winner_tag
 
 
@@ -404,404 +422,372 @@ def phase_select(phase: str, reference: str, design: str = 'parallel'):
 # master_table
 # ---------------------------------------------------------------------------
 
+def discover_phases():
+    """PHASE_ORDER first, then every other results/phase* folder (sorted)."""
+    found = sorted(os.path.basename(d) for d in glob.glob(os.path.join('results', 'phase*')) if os.path.isdir(d))
+    return [p for p in PHASE_ORDER if p in found] + [p for p in found if p not in PHASE_ORDER]
+
+
+def collect_summaries():
+    rows = []
+    for phase_name in discover_phases():
+        for ed in sorted(glob.glob(os.path.join('results', phase_name, '*'))):
+            sp = os.path.join(ed, 'summary.csv')
+            if os.path.isdir(ed) and os.path.isfile(sp):
+                df = pd.read_csv(sp)
+                if not df.empty:
+                    row = normalize_zoo_row(df.iloc[0].to_dict())
+                    row['phase'] = phase_name
+                    row['experiment'] = os.path.basename(ed)
+                    rows.append(row)
+    return rows
+
+
 def master_table():
-    """Scan all results/phase*/*/summary.csv and compile master tables and LaTeX output."""
+    """Compile results/master/* from every results/phase*/<tag>/ (summary.csv, metrics_long.csv, phase tables)."""
     master_dir = os.path.join('results', 'master')
     os.makedirs(master_dir, exist_ok=True)
-
-    all_summaries = []
-    # Discover summary files across all phases
-    for phase_name in PHASE_ORDER:
-        phase_path = os.path.join('results', phase_name)
-        if not os.path.isdir(phase_path):
-            continue
-        exp_dirs = sorted([
-            d for d in glob.glob(os.path.join(phase_path, '*'))
-            if os.path.isdir(d) and os.path.isfile(os.path.join(d, 'summary.csv'))
-        ])
-        for ed in exp_dirs:
-            df = pd.read_csv(os.path.join(ed, 'summary.csv'))
-            if not df.empty:
-                row = df.iloc[0].to_dict()
-                row['phase'] = phase_name
-                row['experiment'] = os.path.basename(ed)
-                all_summaries.append(row)
-
+    all_summaries = collect_summaries()
     if not all_summaries:
         print("master_table: No summaries found.")
         return
-
     full_df = pd.DataFrame(all_summaries)
-
-    # 1. master_full.csv (all summary columns)
     full_df.to_csv(os.path.join(master_dir, 'master_full.csv'), index=False)
-
-    # 2. master_table.csv (core reported columns)
     m_cols = [c for c in MASTER_TABLE_COLS if c in full_df.columns]
     master_df = full_df[m_cols]
+    for c in MASTER_TABLE_COLS:
+        if c not in master_df.columns:
+            master_df = master_df.assign(**{c: ''})
+    master_df = master_df[MASTER_TABLE_COLS]
     master_df.to_csv(os.path.join(master_dir, 'master_table.csv'), index=False)
-
-    # 3. master_table.tex
-    tex_cols = ['phase', 'experiment', 'protocol', 'oof_qwk', 'test_acc', 'test_qwk', 'ext_acc', 'ext_qwk', 'decision', 'is_winner']
-    tex_cols_avail = [c for c in tex_cols if c in master_df.columns]
-    tex_str = _to_latex_booktabs(
-        master_df[tex_cols_avail],
-        highlight_cols=['oof_qwk', 'test_acc', 'test_qwk', 'ext_acc', 'ext_qwk']
-    )
+    tex_cols = ['phase', 'experiment', 'oof_qwk', 'test_qwk', 'ext_qwk', 'ddr_test_qwk', 'deepdrid_test_qwk',
+                'idrid_test_qwk', 'ext_mean_test_qwk', 'decision']
     with open(os.path.join(master_dir, 'master_table.tex'), 'w') as f_tex:
-        f_tex.write(tex_str)
+        f_tex.write(_to_latex_booktabs(master_df[tex_cols], highlight_cols=tex_cols[2:-1]))
 
-    # 4. master_per_class.csv
-    per_class_cols = ['phase', 'experiment'] + [c for c in full_df.columns if re.search(r'_(c\d|macro|mild_recall|nodr)', c)]
-    if len(per_class_cols) > 2:
-        full_df[per_class_cols].to_csv(os.path.join(master_dir, 'master_per_class.csv'), index=False)
+    longs = []
+    for r in all_summaries:
+        p = os.path.join('results', r['phase'], r['experiment'], 'metrics_long.csv')
+        if os.path.isfile(p):
+            d = pd.read_csv(p)
+            d['experiment'] = r['experiment']
+            d['phase'] = r['phase']
+            longs.append(d)
+    if longs:
+        pd.concat(longs, ignore_index=True).to_csv(os.path.join(master_dir, 'master_long.csv'), index=False)
 
-    # 5. master_binary.csv
+    per_class_cols = ['phase', 'experiment'] + [c for c in full_df.columns
+                                                if re.search(r'_(c\d|macro|mild_recall|nodr_share)$', c)]
+    full_df[per_class_cols].to_csv(os.path.join(master_dir, 'master_per_class.csv'), index=False)
     binary_cols = ['phase', 'experiment'] + [c for c in full_df.columns if 'bin_' in c or 'sens_at_spec' in c]
-    if len(binary_cols) > 2:
-        full_df[binary_cols].to_csv(os.path.join(master_dir, 'master_binary.csv'), index=False)
+    full_df[binary_cols].to_csv(os.path.join(master_dir, 'master_binary.csv'), index=False)
 
-    # 6. master_config.csv (experiment, set_overrides, inherit, flat config)
     config_rows = []
     for s in all_summaries:
-        tag = s.get('experiment')
-        try:
-            exp_d = find_exp(tag)
-            cfg_p = os.path.join(exp_d, 'config.yaml')
-            if os.path.isfile(cfg_p):
-                loaded_c = yaml.safe_load(open(cfg_p))
-                config_rows.append({
-                    'experiment': tag,
-                    'inherit': s.get('inherit', ''),
-                    'set_overrides': s.get('set_overrides', ''),
-                    **{f"cfg_{k}": v for k, v in loaded_c.items() if not isinstance(v, (dict, list))},
-                })
-        except Exception:
-            pass
+        cfg_p = os.path.join('results', s['phase'], s['experiment'], 'config.yaml')
+        if os.path.isfile(cfg_p):
+            loaded_c = yaml.safe_load(open(cfg_p)) or {}
+            config_rows.append({'experiment': s['experiment'], 'inherit': s.get('inherit', ''),
+                                'set_overrides': s.get('set_overrides', ''),
+                                **{f"cfg_{k}": v for k, v in loaded_c.items() if not isinstance(v, (dict, list))}})
     if config_rows:
         pd.DataFrame(config_rows).to_csv(os.path.join(master_dir, 'master_config.csv'), index=False)
 
-    # 7. master_deltas.csv
     delta_rows = []
-    for phase_name in PHASE_ORDER:
+    for phase_name in discover_phases():
         pt_path = os.path.join('results', phase_name, 'phase_table.csv')
         if os.path.isfile(pt_path):
-            pt_df = pd.read_csv(pt_path)
-            for _, r in pt_df.iterrows():
-                delta_rows.append(r.to_dict())
+            for _, r in pd.read_csv(pt_path).iterrows():
+                d = r.to_dict()
+                d['phase'] = phase_name
+                delta_rows.append(d)
     if delta_rows:
         pd.DataFrame(delta_rows).to_csv(os.path.join(master_dir, 'master_deltas.csv'), index=False)
-
     print(f"master_table: Compiled {len(all_summaries)} experiments into results/master/")
 
 
 # ---------------------------------------------------------------------------
-# seed_summary
+# seed_summary: seed replicates are found by configuration, not by tag name
 # ---------------------------------------------------------------------------
 
-def seed_summary(phase: str = 'phase9_final'):
-    """Calculate mean +- std over seeds for final and baseline models."""
-    phase_dir = os.path.join('results', phase)
-    if not os.path.isdir(phase_dir):
-        print(f"seed_summary: Directory {phase_dir} does not exist.")
-        return
+# Keys that do not change what is trained (metadata, evaluation and reporting options).
+_SIGNATURE_IGNORE = {
+    'tag', 'phase', 'seed', 'set_overrides', 'inherit', 'base', 'description', 'members', 'kind', 'method',
+    'ckpt_from', 'winner_eligible', 'eval_overwrite', 'evaluate_only', 'bootstrap_ci', 'fewshot_n',
+    'fewshot_draws', 'dedup_exclude_max', 'external_sets', 'select_endpoint', 'select_report_only',
+    'select_dev_sets', 'tost_margin', 'noninf_margin', 'seed_reference', 'report_final', 'report_baseline',
+    'paths', 'num_workers', 'pretrained_fallback', 'grad_checkpointing', 'tta', 'tta_scales',
+    'temperature_scaling', 'conformal_alpha', 'recalibrate', 'bundle_from',
+}
 
-    exp_dirs = [
-        d for d in glob.glob(os.path.join(phase_dir, '*'))
-        if os.path.isdir(d) and os.path.isfile(os.path.join(d, 'summary.csv'))
-    ]
 
-    records = []
-    for ed in exp_dirs:
-        tag = os.path.basename(ed)
-        df = pd.read_csv(os.path.join(ed, 'summary.csv'))
-        if not df.empty:
-            r = df.iloc[0].to_dict()
-            r['tag'] = tag
-            records.append(r)
-
-    if not records:
-        return
-
-    df_seeds = pd.DataFrame(records)
-
-    # Group final runs (p9_final_s*) and baseline runs (p9_base_s*)
-    out_rows = []
-    for group_name, pattern in [('final_model', 'p9_final_s'), ('baseline_model', 'p9_base_s')]:
-        sub = df_seeds[df_seeds['tag'].str.startswith(pattern)]
-        if sub.empty:
+def _signature_equal(a, b, defaults):
+    keys = (set(a) | set(b)) - _SIGNATURE_IGNORE
+    for k in keys:
+        if k.startswith('xai_') or k.startswith('ssl_'):
             continue
-        row = {'model_group': group_name, 'n_seeds': len(sub)}
-        for metric in ['oof_qwk', 'test_acc', 'test_qwk', 'ext_acc', 'ext_qwk', 'test_bin_auroc']:
-            if metric in sub.columns:
-                vals = pd.to_numeric(sub[metric], errors='coerce').dropna()
-                if len(vals) > 0:
-                    row[f"{metric}_mean"] = fmt2(vals.mean())
-                    row[f"{metric}_std"] = fmt2(vals.std())
-        out_rows.append(row)
-
-    if out_rows:
-        master_dir = os.path.join('results', 'master')
-        os.makedirs(master_dir, exist_ok=True)
-        seed_csv_path = os.path.join(master_dir, 'seed_variance.csv')
-        pd.DataFrame(out_rows).to_csv(seed_csv_path, index=False)
-        print(f"seed_summary: Written seed variance to {seed_csv_path}")
+        va, vb = a.get(k, defaults.get(k)), b.get(k, defaults.get(k))
+        if va != vb:
+            return False
+    return True
 
 
-# ---------------------------------------------------------------------------
-# build_paper_tables: S11 Tables 01 to 15
-# ---------------------------------------------------------------------------
+SEED_METRICS = ['oof_qwk', 'oof_acc', 'test_acc', 'test_qwk', 'test_f1_macro', 'test_bin_auroc',
+                'ext_mean_test_qwk', 'ext_mean_test_acc', 'ext_mean_test_bin_auroc', 'ext_mean_test_mild_recall'] + \
+               [f'{d}_test_{m}' for d in EXT_DATASETS_ORDER for m in ('acc', 'qwk', 'f1_macro', 'bin_auroc',
+                                                                       'bin_sens', 'bin_spec', 'mild_recall')]
 
-def build_paper_tables(master_df: pd.DataFrame = None, out_dir: str = 'results/tables'):
-    """Generate paper tables table01 to table15 in CSV and LaTeX format as specified in Part 2 S11.
 
-    Args:
-        master_df: Optional master DataFrame. If None, reads results/master/master_full.csv.
-        out_dir: Output directory (default results/tables).
-    """
-    os.makedirs(out_dir, exist_ok=True)
-    if master_df is None:
-        mf_path = os.path.join('results', 'master', 'master_full.csv')
-        if not os.path.isfile(mf_path):
-            master_table()
-        if os.path.isfile(mf_path):
-            master_df = pd.read_csv(mf_path)
+def seed_groups():
+    """Group every trained experiment with all experiments that differ only by seed / metadata."""
+    defaults = yaml.safe_load(open('configs/config.yaml')) if os.path.isfile('configs/config.yaml') else {}
+    items = []
+    for s in collect_summaries():
+        if s['phase'] == 'phase1_zoo':
+            continue
+        cp = os.path.join('results', s['phase'], s['experiment'], 'config.yaml')
+        if not os.path.isfile(cp):
+            continue
+        c = yaml.safe_load(open(cp)) or {}
+        sp = os.path.join('checkpoints', s['experiment'], 'config_snapshot.yaml')
+        snap = (yaml.safe_load(open(sp)) or {}) if os.path.isfile(sp) else {}
+        meta = {k: snap.get(k) or c.get(k) for k in ('members', 'kind', 'ckpt_from')}
+        if meta['members'] or meta['kind'] == 'calibrate_conformal' or meta['ckpt_from']:
+            continue  # ensembles / inference-only / conformal tags are not independent trainings
+        items.append((s, c))
+    groups = []
+    for s, c in items:
+        for g in groups:
+            if _signature_equal(g['cfg'], c, defaults):
+                g['members'].append((s, c))
+                break
         else:
-            master_df = pd.DataFrame()
+            groups.append({'cfg': c, 'members': [(s, c)]})
+    out = []
+    for g in groups:
+        mem = sorted(g['members'], key=lambda sc: (int(sc[1].get('seed', 0) or 0), len(sc[0]['experiment'])))
+        out.append({'group': mem[0][0]['experiment'], 'members': mem})
+    return out
 
-    def _save_table(df, name, highlight_cols=None):
-        csv_path = os.path.join(out_dir, f"{name}.csv")
-        tex_path = os.path.join(out_dir, f"{name}.tex")
-        df.to_csv(csv_path, index=False)
-        tex_content = _to_latex_booktabs(df, highlight_cols=highlight_cols)
-        with open(tex_path, 'w') as f_tex:
-            f_tex.write(tex_content)
-        return csv_path
 
-    # Helper to safely select and rename columns
-    def _extract_cols(sub_df, col_map):
-        res = pd.DataFrame()
-        for src, dest in col_map.items():
-            if src in sub_df.columns:
-                res[dest] = sub_df[src].apply(lambda x: fmt2(x) if isinstance(x, (int, float)) else str(x) if pd.notna(x) else '')
-            else:
-                res[dest] = ''
-        return res
+def seed_summary(phase: str = None, reference: str = None):
+    """Mean +- SD over seed replicates for every configuration, and seed-level comparisons.
 
-    # Table 01: Baseline Zoo (imported)
-    zoo_path = os.path.join('results', 'phase1_zoo', 'zoo_table.csv')
-    if os.path.isfile(zoo_path):
-        df_t1 = pd.read_csv(zoo_path)
+    Writes results/master/seed_variance.csv (group x metric: n, mean, sd, per-seed values) and
+    results/master/seed_compare.csv (every group with >= 2 seeds vs the reference group: mean
+    difference, Welch t-test p-value; seed is the unit of analysis). `phase` restricts the groups to
+    those with at least one member in that phase.
+    """
+    groups = seed_groups()
+    if phase:
+        groups = [g for g in groups if any(s['phase'] == phase for s, _ in g['members'])]
+    if not groups:
+        print('seed_summary: no trained experiments found')
+        return
+    rows, values = [], {}
+    for g in groups:
+        tags = [s['experiment'] for s, _ in g['members']]
+        seeds = [str(c.get('seed', 0)) for _, c in g['members']]
+        for m in SEED_METRICS:
+            vals = pd.to_numeric(pd.Series([s.get(m, np.nan) for s, _ in g['members']]), errors='coerce')
+            v = vals.dropna().to_numpy(dtype=float)
+            values[(g['group'], m)] = v
+            if len(v) == 0:
+                continue
+            rows.append({'group': g['group'], 'members': ','.join(tags), 'seeds': ','.join(seeds), 'metric': m,
+                         'n_seeds': len(v), 'mean': fmt2(v.mean()), 'sd': fmt2(v.std(ddof=1)) if len(v) > 1 else '',
+                         'values': ','.join(fmt2(x) for x in v)})
+    master_dir = os.path.join('results', 'master')
+    os.makedirs(master_dir, exist_ok=True)
+    pd.DataFrame(rows, columns=['group', 'members', 'seeds', 'metric', 'n_seeds', 'mean', 'sd', 'values']).to_csv(
+        os.path.join(master_dir, 'seed_variance.csv'), index=False)
+
+    ref = resolve(reference) if reference else None
+    ref_group = next((g['group'] for g in groups if ref and any(s['experiment'] == ref for s, _ in g['members'])), None)
+    cmp_rows = []
+    if ref_group:
+        for g in groups:
+            if g['group'] == ref_group:
+                continue
+            for m in SEED_METRICS:
+                a, b = values.get((g['group'], m), np.array([])), values.get((ref_group, m), np.array([]))
+                if len(a) < 2 or len(b) < 2:
+                    continue
+                t = ttest_ind(a, b, equal_var=False)
+                cmp_rows.append({'group': g['group'], 'reference': ref_group, 'metric': m, 'n_group': len(a),
+                                 'n_reference': len(b), 'mean_group': fmt2(a.mean()), 'mean_reference': fmt2(b.mean()),
+                                 'diff': fmt2(a.mean() - b.mean()), 'welch_p': fmt2(float(t.pvalue))})
+    pd.DataFrame(cmp_rows, columns=['group', 'reference', 'metric', 'n_group', 'n_reference', 'mean_group',
+                                    'mean_reference', 'diff', 'welch_p']).to_csv(
+        os.path.join(master_dir, 'seed_compare.csv'), index=False)
+    print(f'seed_summary: {len(groups)} configuration groups -> results/master/seed_variance.csv'
+          + (f'; comparisons vs {ref_group} -> results/master/seed_compare.csv' if ref_group else
+             '; no reference group with >= 2 seeds found (seed_compare.csv empty)'))
+
+
+# ---------------------------------------------------------------------------
+# build_paper_tables
+# ---------------------------------------------------------------------------
+
+def read_csv_safe(path):
+    """pd.read_csv that returns an empty frame for a missing or zero-column file."""
+    if not os.path.isfile(path):
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def _fmt_ci(v, lo, hi, digits=2):
+    if pd.isna(v):
+        return ''
+    if pd.isna(lo) or pd.isna(hi):
+        return f'{v:.{digits}f}'
+    return f'{v:.{digits}f} [{lo:.{digits}f}, {hi:.{digits}f}]'
+
+
+def _model_sets_table(tags, metrics, label_map):
+    rows = []
+    for role, tag in tags:
+        p = os.path.join(find_exp(tag), 'metrics_long.csv')
+        d = pd.read_csv(p)
+        d = d[d['task'] != 'devcal']
+        for set_name in d['set'].drop_duplicates():
+            sub = d[d['set'] == set_name].set_index('metric')
+            row = {'model': f'{role} ({tag})', 'set': set_name, 'in_source': bool(sub['in_source'].iloc[0]),
+                   'n': int(sub['n'].iloc[0])}
+            for m in metrics:
+                if m in sub.index:
+                    r = sub.loc[m]
+                    row[label_map.get(m, m)] = _fmt_ci(r['value'], r['ci_lo'], r['ci_hi'])
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def build_paper_tables(master_df: pd.DataFrame = None, out_dir: str = 'results/tables', cfg: dict = None):
+    """Build the paper tables from real results only (see TABLES_README.txt in out_dir for what was skipped)."""
+    cfg = cfg or {}
+    os.makedirs(out_dir, exist_ok=True)
+    for old in glob.glob(os.path.join(out_dir, 'table*.csv')) + glob.glob(os.path.join(out_dir, 'table*.tex')):
+        os.remove(old)
+    if master_df is None:
+        master_table()
+        mf = os.path.join('results', 'master', 'master_full.csv')
+        master_df = pd.read_csv(mf) if os.path.isfile(mf) else pd.DataFrame()
+    written, skipped = [], []
+
+    def _save(df, name, highlight=None, note=None):
+        if df is None or df.empty:
+            skipped.append(f'{name}: no data')
+            return
+        df.to_csv(os.path.join(out_dir, f'{name}.csv'), index=False)
+        with open(os.path.join(out_dir, f'{name}.tex'), 'w') as f_tex:
+            f_tex.write(_to_latex_booktabs(df, highlight_cols=highlight))
+        written.append(name + (f'  ({note})' if note else ''))
+
+    def _cols(df, mapping):
+        out = pd.DataFrame()
+        for src, dst in mapping.items():
+            out[dst] = df[src].map(lambda x: fmt2(x) if isinstance(x, (int, float, np.floating)) and not
+                                   isinstance(x, bool) else ('' if pd.isna(x) else str(x))) if src in df.columns else ''
+        return out
+
+    zoo = master_df[master_df['phase'] == 'phase1_zoo'] if not master_df.empty else pd.DataFrame()
+    t1 = _cols(zoo, {'experiment': 'Model', 'test_acc': 'Test_Acc', 'test_qwk': 'Test_QWK', 'test_f1_macro': 'Test_F1',
+                     'test_bin_acc': 'Test_Bin_Acc', 'ext_full1744_acc': 'Messidor1744_Acc',
+                     'ext_full1744_qwk': 'Messidor1744_QWK', 'ext_full1744_bin_acc': 'Messidor1744_Bin_Acc'})
+    _save(t1, 'table01_zoo_screening', note='single-fold models; external = all 1,744 Messidor-2 images, '
+                                            'not comparable with the protocol runs')
+
+    runs = master_df[master_df['phase'] != 'phase1_zoo'].copy() if not master_df.empty else pd.DataFrame()
+    if not runs.empty:
+        amended = {}
+        for ph in runs['phase'].unique():
+            pt = os.path.join('results', ph, 'phase_table_amended.csv')
+            if os.path.isfile(pt):
+                for _, r in pd.read_csv(pt).iterrows():
+                    amended[r['experiment']] = r.get('decision_amended', '')
+        runs = runs.copy()
+        runs['decision_amended'] = runs['experiment'].map(amended).fillna('')
+    t2 = _cols(runs, {'phase': 'Phase', 'experiment': 'Experiment', 'description': 'Description',
+                      'train_sources': 'Train_sources', 'decision': 'Decision', 'decision_amended': 'Decision_amended',
+                      'oof_qwk': 'OOF_QWK', 'test_qwk': 'APTOS_test_QWK', 'ext_qwk': 'Messidor_test_QWK',
+                      'ddr_test_qwk': 'DDR_test_QWK', 'deepdrid_test_qwk': 'DeepDRiD_test_QWK',
+                      'idrid_test_qwk': 'IDRiD_test_QWK', 'ext_mean_test_qwk': 'Ext_mean_QWK',
+                      'ext_mean_test_bin_auroc': 'Ext_mean_AUROC', 'ext_mean_test_mild_recall': 'Ext_mean_Mild_recall'})
+    _save(t2, 'table02_ablations', highlight=['OOF_QWK', 'Ext_mean_QWK', 'Ext_mean_AUROC'])
+
+    final, base = cfg.get('report_final'), cfg.get('report_baseline')
+    tags = [(r, resolve(t)) for r, t in (('final', final), ('baseline', base)) if t]
+    if tags:
+        lab5 = {'acc': 'Accuracy', 'qwk': 'QWK', 'prec_macro': 'Precision', 'rec_macro': 'Recall', 'f1_macro': 'F1',
+                'mild_recall': 'Mild_recall'}
+        labb = {'bin_acc': 'Accuracy', 'bin_prec': 'Precision', 'bin_sens': 'Sensitivity', 'bin_spec': 'Specificity',
+                'bin_f1': 'F1', 'bin_auroc': 'AUROC', 'bin_auprc': 'AUPRC', 'sens_at_spec90': 'Sens_at_Spec90'}
+        _save(_model_sets_table(tags, list(lab5), lab5), 'table03_main_5class',
+              note='value [95 % bootstrap CI over images]')
+        _save(_model_sets_table(tags, list(labb), labb), 'table04_main_binary',
+              note='referable DR = grades 2-4; value [95 % CI]')
+        pcs = []
+        for role, tag in tags:
+            pc = pd.read_csv(os.path.join(find_exp(tag), 'per_class.csv'))
+            pc.insert(0, 'model', f'{role} ({tag})')
+            pcs.append(pc)
+        _save(pd.concat(pcs, ignore_index=True), 'table05_per_class')
+        cps, fss = [], []
+        for role, tag in tags:
+            d = find_exp(tag)
+            if os.path.isfile(os.path.join(d, 'cutpoints.csv')):
+                c = read_csv_safe(os.path.join(d, 'cutpoints.csv'))
+                if not c.empty:
+                    c.insert(0, 'model', f'{role} ({tag})')
+                    cps.append(c)
+            if os.path.isfile(os.path.join(d, 'fewshot.csv')):
+                f = read_csv_safe(os.path.join(d, 'fewshot.csv'))
+                if not f.empty:
+                    f.insert(0, 'model', f'{role} ({tag})')
+                    fss.append(f)
+        _save(pd.concat(cps, ignore_index=True).round(2) if cps else None, 'table07_cutpoints',
+              note='argmax vs cut-points refitted on each dataset DEV split, evaluated on its TEST split')
+        _save(pd.concat(fss, ignore_index=True).round(2) if fss else None, 'table08_fewshot')
+        loc = [pd.read_csv(os.path.join(find_exp(t), 'xai', 'xai_localization.csv')).assign(model=f'{r} ({t})')
+               for r, t in tags if os.path.isfile(os.path.join(find_exp(t), 'xai', 'xai_localization.csv'))]
+        _save(pd.concat(loc, ignore_index=True) if loc else None, 'table12_xai_localization')
     else:
-        zoo_rows = master_df[master_df['phase'] == 'phase1_zoo'] if not master_df.empty else pd.DataFrame()
-        df_t1 = _extract_cols(zoo_rows, {
-            'experiment': 'Model', 'test_acc': 'Accuracy', 'test_qwk': 'QWK',
-            'test_prec_macro': 'Precision', 'test_rec_macro': 'Recall', 'test_f1_macro': 'F1_Score',
-            'test_bin_acc': 'Bin_Acc', 'test_bin_prec': 'Bin_Prec', 'test_bin_sens': 'Bin_Rec',
-            'test_bin_f1': 'Bin_F1', 'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK', 'ext_bin_acc': 'Ext_Bin_Acc'
-        })
-    _save_table(df_t1, 'table01_zoo', highlight_cols=['Accuracy', 'QWK', 'F1_Score', 'Ext_Acc', 'Ext_QWK', 'Ext_Bin_Acc'])
+        for n in ('table03_main_5class', 'table04_main_binary', 'table05_per_class', 'table07_cutpoints',
+                  'table08_fewshot', 'table12_xai_localization'):
+            skipped.append(f'{n}: set --set report_final=<tag> report_baseline=<tag>')
 
-    # Table 02: Recipe + Preprocessing (phase2a/2b)
-    p2_rows = master_df[master_df['phase'].isin(['phase2a_recipe', 'phase2b_preprocess'])] if not master_df.empty else pd.DataFrame()
-    df_t2 = _extract_cols(p2_rows, {
-        'phase': 'Phase', 'experiment': 'Experiment', 'description': 'Description',
-        'oof_qwk': 'OOF_QWK', 'test_acc': 'Test_Acc', 'test_qwk': 'Test_QWK',
-        'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK', 'decision': 'Decision'
-    })
-    if df_t2.empty:
-        df_t2 = pd.DataFrame([
-            {'Phase': 'phase2a_recipe', 'Experiment': 'p2a_plain', 'Description': 'Baseline plain recipe',
-             'OOF_QWK': '0.85', 'Test_Acc': '82.10', 'Test_QWK': '0.85', 'Ext_Acc': '65.20', 'Ext_QWK': '0.59', 'Decision': 'REFERENCE'},
-            {'Phase': 'phase2b_preprocess', 'Experiment': 'p2b_scaled', 'Description': 'Scaled aspect-preserving preproc',
-             'OOF_QWK': '0.88', 'Test_Acc': '84.20', 'Test_QWK': '0.88', 'Ext_Acc': '68.50', 'Ext_QWK': '0.64', 'Decision': 'ADOPT'},
-        ])
-    _save_table(df_t2, 'table02_recipe_preprocess', highlight_cols=['OOF_QWK', 'Test_QWK', 'Ext_QWK'])
-
-    # Table 03: Pretraining + Joint-source (phase3a/3b)
-    p3_rows = master_df[master_df['phase'].isin(['phase3a_pretrain', 'phase3b_joint'])] if not master_df.empty else pd.DataFrame()
-    df_t3 = _extract_cols(p3_rows, {
-        'phase': 'Phase', 'experiment': 'Experiment', 'description': 'Description',
-        'oof_qwk': 'OOF_QWK', 'test_acc': 'Test_Acc', 'test_qwk': 'Test_QWK',
-        'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK', 'ext_mild_recall': 'Ext_Mild_Recall', 'decision': 'Decision'
-    })
-    if df_t3.empty:
-        df_t3 = pd.DataFrame([
-            {'Phase': 'phase3a_pretrain', 'Experiment': 'p3a_ssl', 'Description': 'SSL MaxViT-L pretraining',
-             'OOF_QWK': '0.90', 'Test_Acc': '85.40', 'Test_QWK': '0.90', 'Ext_Acc': '71.20', 'Ext_QWK': '0.68', 'Ext_Mild_Recall': '54.20', 'Decision': 'ADOPT'},
-            {'Phase': 'phase3a_pretrain', 'Experiment': 'p3a_imagenet', 'Description': 'ImageNet pretrained reference',
-             'OOF_QWK': '0.88', 'Test_Acc': '84.20', 'Test_QWK': '0.88', 'Ext_Acc': '68.50', 'Ext_QWK': '0.64', 'Ext_Mild_Recall': '48.50', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t3, 'table03_pretrain_joint', highlight_cols=['OOF_QWK', 'Test_QWK', 'Ext_QWK', 'Ext_Mild_Recall'])
-
-    # Table 04: Label / Loss (phase4)
-    p4_rows = master_df[master_df['phase'] == 'phase4_label_loss'] if not master_df.empty else pd.DataFrame()
-    df_t4 = _extract_cols(p4_rows, {
-        'experiment': 'Experiment', 'description': 'Description',
-        'oof_qwk': 'OOF_QWK', 'test_acc': 'Test_Acc', 'test_qwk': 'Test_QWK',
-        'test_adj_acc': 'Test_Adj_Acc', 'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK', 'decision': 'Decision'
-    })
-    if df_t4.empty:
-        df_t4 = pd.DataFrame([
-            {'Experiment': 'p4_aasl', 'Description': 'Confident learning soft labels (AASL)',
-             'OOF_QWK': '0.92', 'Test_Acc': '85.90', 'Test_QWK': '0.92', 'Test_Adj_Acc': '98.50', 'Ext_Acc': '73.50', 'Ext_QWK': '0.71', 'Decision': 'ADOPT'},
-            {'Experiment': 'p4_hard', 'Description': 'Hard labels reference',
-             'OOF_QWK': '0.90', 'Test_Acc': '85.40', 'Test_QWK': '0.90', 'Test_Adj_Acc': '97.20', 'Ext_Acc': '71.20', 'Ext_QWK': '0.68', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t4, 'table04_label_loss', highlight_cols=['OOF_QWK', 'Test_QWK', 'Test_Adj_Acc', 'Ext_QWK'])
-
-    # Table 05: Architecture + Ensemble (phase5)
-    p5_rows = master_df[master_df['phase'] == 'phase5_architecture'] if not master_df.empty else pd.DataFrame()
-    df_t5 = _extract_cols(p5_rows, {
-        'experiment': 'Experiment', 'description': 'Description', 'protocol': 'Protocol',
-        'n_params_M': 'Params_M', 'test_qwk': 'Test_QWK', 'test_acc': 'Test_Acc',
-        'ext_qwk': 'Ext_QWK', 'ext_acc': 'Ext_Acc', 'decision': 'Decision'
-    })
-    if df_t5.empty:
-        df_t5 = pd.DataFrame([
-            {'Experiment': 'p5_ens5', 'Description': '5-Fold MaxViT-L ensemble', 'Protocol': 'ensemble5_tta',
-             'Params_M': '1060.00', 'Test_QWK': '0.94', 'Test_Acc': '86.40', 'Ext_QWK': '0.74', 'Ext_Acc': '75.20', 'Decision': 'ADOPT'},
-            {'Experiment': 'p5_single', 'Description': 'Single fold MaxViT-L', 'Protocol': 'single_model',
-             'Params_M': '212.00', 'Test_QWK': '0.92', 'Test_Acc': '85.90', 'Ext_QWK': '0.71', 'Ext_Acc': '73.50', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t5, 'table05_arch_ensemble', highlight_cols=['Test_QWK', 'Test_Acc', 'Ext_QWK', 'Ext_Acc'])
-
-    # Table 06: Domain Generalisation (phase6)
-    p6_rows = master_df[master_df['phase'] == 'phase6_domain_gen'] if not master_df.empty else pd.DataFrame()
-    df_t6 = _extract_cols(p6_rows, {
-        'experiment': 'Experiment', 'description': 'Description',
-        'extdev_qwk': 'ExtDev_QWK', 'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK',
-        'ext_mild_recall': 'Ext_Mild_Recall', 'ext_pred_nodr_share': 'Pred_NoDR_Share',
-        'ext_bin_acc': 'Ext_Bin_Acc', 'ext_bin_auroc': 'Ext_Bin_AUROC',
-        'ext_sens_at_spec90': 'Sens_at_Spec90', 'decision': 'Decision'
-    })
-    if df_t6.empty:
-        df_t6 = pd.DataFrame([
-            {'Experiment': 'p6_ampmix', 'Description': 'Fourier Amplitude Mixing + MixStyle',
-             'ExtDev_QWK': '0.78', 'Ext_Acc': '78.20', 'Ext_QWK': '0.78', 'Ext_Mild_Recall': '68.50',
-             'Pred_NoDR_Share': '58.50', 'Ext_Bin_Acc': '89.50', 'Ext_Bin_AUROC': '0.95', 'Sens_at_Spec90': '94.20', 'Decision': 'ADOPT'},
-            {'Experiment': 'p6_ref', 'Description': 'Domain generalisation reference',
-             'ExtDev_QWK': '0.71', 'Ext_Acc': '75.20', 'Ext_QWK': '0.74', 'Ext_Mild_Recall': '54.20',
-             'Pred_NoDR_Share': '68.20', 'Ext_Bin_Acc': '86.40', 'Ext_Bin_AUROC': '0.92', 'Sens_at_Spec90': '90.50', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t6, 'table06_domain_generalisation', highlight_cols=['ExtDev_QWK', 'Ext_QWK', 'Ext_Mild_Recall', 'Ext_Bin_AUROC'])
-
-    # Table 07: Feature-Level Balancing (phase7)
-    p7_rows = master_df[master_df['phase'] == 'phase7_feature_balance'] if not master_df.empty else pd.DataFrame()
-    df_t7 = _extract_cols(p7_rows, {
-        'experiment': 'Experiment', 'description': 'Description',
-        'oof_qwk': 'OOF_QWK', 'test_qwk': 'Test_QWK', 'test_f1_c1': 'Test_F1_c1',
-        'ext_acc': 'Ext_Acc', 'ext_qwk': 'Ext_QWK', 'ext_mild_recall': 'Ext_Mild_Recall', 'decision': 'Decision'
-    })
-    if df_t7.empty:
-        df_t7 = pd.DataFrame([
-            {'Experiment': 'p7_smote', 'Description': 'SMOTE latent feature balancing',
-             'OOF_QWK': '0.94', 'Test_QWK': '0.94', 'Test_F1_c1': '68.50', 'Ext_Acc': '78.20', 'Ext_QWK': '0.78', 'Ext_Mild_Recall': '68.50', 'Decision': 'TENTATIVE'},
-            {'Experiment': 'p7_none', 'Description': 'Unbalanced baseline',
-             'OOF_QWK': '0.94', 'Test_QWK': '0.94', 'Test_F1_c1': '66.20', 'Ext_Acc': '78.20', 'Ext_QWK': '0.78', 'Ext_Mild_Recall': '68.50', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t7, 'table07_feature_balance', highlight_cols=['OOF_QWK', 'Test_QWK', 'Ext_QWK', 'Ext_Mild_Recall'])
-
-    # Table 08: Inference (phase8)
-    p8_rows = master_df[master_df['phase'] == 'phase8_inference'] if not master_df.empty else pd.DataFrame()
-    df_t8 = _extract_cols(p8_rows, {
-        'experiment': 'Experiment', 'description': 'Description',
-        'test_qwk': 'Test_QWK', 'ece_test': 'ECE_Test',
-        'ext_qwk': 'Ext_QWK', 'ece_ext': 'ECE_Ext', 'decision': 'Decision'
-    })
-    if df_t8.empty:
-        df_t8 = pd.DataFrame([
-            {'Experiment': 'p8_temp', 'Description': 'TTA flip_rot + Temperature scaling',
-             'Test_QWK': '0.94', 'ECE_Test': '0.94', 'Ext_QWK': '0.78', 'ECE_Ext': '1.82', 'Decision': 'ADOPT'},
-            {'Experiment': 'p8_tta_none', 'Description': 'No TTA, uncalibrated',
-             'Test_QWK': '0.93', 'ECE_Test': '4.28', 'Ext_QWK': '0.76', 'ECE_Ext': '5.14', 'Decision': 'REFERENCE'},
-        ])
-    _save_table(df_t8, 'table08_inference', highlight_cols=['Test_QWK', 'ECE_Test', 'Ext_QWK', 'ECE_Ext'])
-
-    # Table 09: Per-class report (Test and Messidor TEST)
-    mpc_path = os.path.join('results', 'master', 'master_per_class.csv')
-    if os.path.isfile(mpc_path):
-        df_t9 = pd.read_csv(mpc_path)
+    md = os.path.join('results', 'master', 'master_deltas.csv')
+    if os.path.isfile(md):
+        d = pd.read_csv(md)
+        keep = [c for c in ['phase', 'experiment', 'decision_original', 'decision_amended', 'd_oof_qwk', 'ci_lo',
+                            'ci_hi', 'p_holm', 'oof_equivalent', 'd_dev_mean_qwk', 'd_dev_mean_qwk_ci_lo',
+                            'd_dev_mean_qwk_ci_hi', 'dev_p_holm', 'dev_sets_used'] if c in d.columns]
+        _save(d[keep], 'table06_statistical_tests', note='paired image bootstrap vs the phase reference (seed 0)')
     else:
-        df_t9 = pd.DataFrame([
-            {'Model': 'MODAL-Net (Final)', 'Dataset': 'Internal Test', 'Class': c, 'Class_Name': ['No DR', 'Mild', 'Moderate', 'Severe', 'Proliferative'][c],
-             'Precision': '88.50', 'Recall': '87.20', 'F1': '87.80', 'Support': '100'} for c in range(5)
-        ])
-    _save_table(df_t9, 'table09_per_class', highlight_cols=['Precision', 'Recall', 'F1'])
+        skipped.append('table06_statistical_tests: no phase_table.csv yet (run phase_select)')
 
-    # Table 10: Binary (referable) metrics
-    mb_path = os.path.join('results', 'master', 'master_binary.csv')
-    if os.path.isfile(mb_path):
-        df_t10 = pd.read_csv(mb_path)
-    else:
-        df_t10 = pd.DataFrame([{
-            'Model': 'MODAL-Net (Final)', 'Dataset': 'Internal Test',
-            'Bin_Acc': '94.50', 'Bin_Prec': '92.10', 'Bin_Sens': '93.40', 'Bin_Spec': '95.20',
-            'Bin_F1': '92.74', 'Bin_AUROC': '0.98', 'Bin_AUPRC': '0.96', 'Sens_at_Spec90': '96.20', 'Sens_at_Spec95': '93.40'
-        }])
-    _save_table(df_t10, 'table10_binary', highlight_cols=['Bin_Acc', 'Bin_Sens', 'Bin_Spec', 'Bin_AUROC'])
+    _save(read_csv_safe(os.path.join('results', 'master', 'seed_variance.csv')), 'table09_seed_variance')
+    _save(read_csv_safe(os.path.join('results', 'master', 'seed_compare.csv')), 'table09b_seed_compare')
 
-    # Table 11: Statistical tests
-    md_path = os.path.join('results', 'master', 'master_deltas.csv')
-    if os.path.isfile(md_path):
-        df_t11 = pd.read_csv(md_path)
-    else:
-        df_t11 = pd.DataFrame([{
-            'Component': 'MixStyle + AmpMix', 'Reference': 'p2a_plain', 'Metric': 'QWK (ext)',
-            'Delta': '+0.08', 'CI_95': '[+0.04, +0.12]', 'Holm_p': '0.002', 'Decision': 'ADOPT'
-        }])
-    _save_table(df_t11, 'table11_statistical_tests')
+    conf = []
+    for p in sorted(glob.glob(os.path.join('results', 'phase*', '*', 'conformal.csv'))):
+        c = read_csv_safe(p)
+        c.insert(0, 'experiment', os.path.basename(os.path.dirname(p)))
+        conf.append(c)
+    _save(pd.concat(conf, ignore_index=True).round(2) if conf else None, 'table10_conformal')
 
-    # Table 12: Conformal / Selective Prediction
-    conf_path = os.path.join('results', 'phase8_inference', 'p8_conformal', 'conformal.csv')
-    if os.path.isfile(conf_path):
-        df_t12 = pd.read_csv(conf_path)
-    else:
-        df_t12 = pd.DataFrame([
-            {'Dataset': 'Internal Test', 'Target_Coverage': '90.00', 'Cutoff_qhat': '0.88', 'Empirical_Coverage': '91.20',
-             'Mean_Width': '1.34', 'Singleton_Share': '78.50', 'Singleton_Acc': '95.40', 'Abstention_Referable': '8.20',
-             'AURC': '0.04', 'Acc_at_Cov70': '98.50', 'Acc_at_Cov80': '96.20', 'Acc_at_Cov90': '92.80'},
-            {'Dataset': 'Messidor TEST', 'Target_Coverage': '90.00', 'Cutoff_qhat': '0.88', 'Empirical_Coverage': '88.40',
-             'Mean_Width': '1.48', 'Singleton_Share': '72.10', 'Singleton_Acc': '91.80', 'Abstention_Referable': '12.40',
-             'AURC': '0.08', 'Acc_at_Cov70': '95.20', 'Acc_at_Cov80': '92.40', 'Acc_at_Cov90': '88.10'},
-        ])
-    _save_table(df_t12, 'table12_conformal')
+    t11 = _cols(runs, {'phase': 'Phase', 'experiment': 'Experiment', 'n_params_M': 'Params_M',
+                       'gpu_hours': 'GPU_hours', 'protocol': 'Protocol'})
+    _save(t11, 'table11_compute', note='gpu_hours of tags rebuilt by tools/rebuild_oof.py time inference only')
 
-    # Table 13: Literature Comparison
-    df_t13 = pd.DataFrame([
-        {'Method': 'ResNet-50 Baseline', 'Venue_Year': 'Re-impl. (2024)', 'Architecture': 'ResNet-50', 'APTOS_QWK': '0.85', 'Messidor_QWK': '0.41', 'Messidor_AUROC': '0.80', 'Notes': 'Standard supervised training'},
-        {'Method': 'SwinV2-L Baseline', 'Venue_Year': 'Re-impl. (2024)', 'Architecture': 'SwinV2-Large', 'APTOS_QWK': '0.87', 'Messidor_QWK': '0.54', 'Messidor_AUROC': '0.83', 'Notes': 'Standard supervised training'},
-        {'Method': 'MaxViT-L Plain Baseline', 'Venue_Year': 'Re-impl. (2024)', 'Architecture': 'MaxViT-Large', 'APTOS_QWK': '0.90', 'Messidor_QWK': '0.59', 'Messidor_AUROC': '0.85', 'Notes': 'Standard supervised training'},
-        {'Method': 'Gulshan et al.', 'Venue_Year': 'JAMA 2016 [TODO_CITE]', 'Architecture': 'Inception-v3', 'APTOS_QWK': '0.86', 'Messidor_QWK': '0.62', 'Messidor_AUROC': '0.88', 'Notes': 'Pioneer deep learning DR benchmark'},
-        {'Method': 'Voets et al.', 'Venue_Year': 'Ophthalmology 2019 [TODO_CITE]', 'Architecture': 'DenseNet-121', 'APTOS_QWK': '0.88', 'Messidor_QWK': '0.64', 'Messidor_AUROC': '0.89', 'Notes': 'Validation on Messidor-2'},
-        {'Method': 'Kaggle APTOS 1st Place', 'Venue_Year': 'Kaggle 2019 [TODO_CITE]', 'Architecture': 'Ensemble (SE-ResNeXt/EffNet)', 'APTOS_QWK': '0.92', 'Messidor_QWK': '0.66', 'Messidor_AUROC': '0.90', 'Notes': 'Competition winning ensemble'},
-        {'Method': 'MODAL-Net (Ours)', 'Venue_Year': 'This work', 'Architecture': 'MaxViT-L + MixStyle + Wavelet', 'APTOS_QWK': '0.94', 'Messidor_QWK': '0.78', 'Messidor_AUROC': '0.95', 'Notes': 'Full domain-generalized framework'},
-    ])
-    _save_table(df_t13, 'table13_literature', highlight_cols=['APTOS_QWK', 'Messidor_QWK', 'Messidor_AUROC'])
-
-    # Table 14: Compute & Model Complexity
-    df_t14 = pd.DataFrame([
-        {'Model': 'ResNet-50', 'Architecture': 'ResNet-50', 'Params_M': '25.60', 'FLOPs_G': '4.10', 'GPU_Hours': '1.80', 'Latency_ms': '4.20'},
-        {'Model': 'DenseNet-121', 'Architecture': 'DenseNet-121', 'Params_M': '8.00', 'FLOPs_G': '2.90', 'GPU_Hours': '1.60', 'Latency_ms': '5.10'},
-        {'Model': 'EfficientNetV2-M', 'Architecture': 'EfficientNetV2-M', 'Params_M': '54.10', 'FLOPs_G': '5.40', 'GPU_Hours': '3.20', 'Latency_ms': '6.80'},
-        {'Model': 'SwinV2-L', 'Architecture': 'SwinV2-Large', 'Params_M': '197.00', 'FLOPs_G': '44.80', 'GPU_Hours': '8.50', 'Latency_ms': '18.40'},
-        {'Model': 'MaxViT-L (Single)', 'Architecture': 'MaxViT-Large', 'Params_M': '212.00', 'FLOPs_G': '43.20', 'GPU_Hours': '8.20', 'Latency_ms': '16.50'},
-        {'Model': 'MODAL-Net (Ensemble5)', 'Architecture': '5x MaxViT-Large', 'Params_M': '1060.00', 'FLOPs_G': '216.00', 'GPU_Hours': '41.00', 'Latency_ms': '82.50'},
-    ])
-    _save_table(df_t14, 'table14_compute')
-
-    # Table 15: Seed Variance
-    sv_path = os.path.join('results', 'master', 'seed_variance.csv')
-    if os.path.isfile(sv_path):
-        df_t15 = pd.read_csv(sv_path)
-    else:
-        df_t15 = pd.DataFrame([
-            {'Model_Group': 'MODAL-Net (Final)', 'N_Seeds': '3', 'OOF_QWK': '0.94 ± 0.01', 'Test_Acc': '86.40 ± 0.35',
-             'Test_QWK': '0.94 ± 0.01', 'Ext_Acc': '78.20 ± 0.42', 'Ext_QWK': '0.78 ± 0.01', 'Test_Bin_AUROC': '0.98 ± 0.00'},
-            {'Model_Group': 'Plain Baseline', 'N_Seeds': '3', 'OOF_QWK': '0.88 ± 0.02', 'Test_Acc': '82.10 ± 0.50',
-             'Test_QWK': '0.88 ± 0.02', 'Ext_Acc': '65.20 ± 0.65', 'Ext_QWK': '0.59 ± 0.02', 'Test_Bin_AUROC': '0.92 ± 0.01'},
-        ])
-    _save_table(df_t15, 'table15_seed_variance')
-
-    print(f"build_paper_tables: Generated all 15 paper tables in {out_dir}")
-
+    with open(os.path.join(out_dir, 'TABLES_README.txt'), 'w') as f:
+        f.write('Paper tables built from real results only.\n\nWritten:\n')
+        f.writelines(f'  {w}\n' for w in written)
+        f.write('\nSkipped:\n')
+        f.writelines(f'  {s}\n' for s in skipped)
+        f.write('\nA literature comparison is not generated automatically: competitor numbers must come from '
+                'verified papers (or be reproduced under this protocol) and be typed in by the authors.\n')
+    print(f"build_paper_tables: {len(written)} tables written, {len(skipped)} skipped -> {out_dir}/TABLES_README.txt")

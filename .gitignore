@@ -2,6 +2,9 @@
 # MODAL-Net .gitignore
 # =============================================================================
 
+# --- Temporary transfer archives ---
+_transfer/
+
 # --- Byte-compiled / optimized / test caches ---
 __pycache__/
 *.py[cod]

@@ -1,5 +1,9 @@
 # DR Severity Grading — Full Result Ledger, Compute Accounting, and Constraint Analysis
 
+> **Code revision 2026-11-03 (after this ledger was written):** every run is now evaluated on four external datasets
+> (Messidor-2, DDR, DeepDRiD, IDRiD) with the amended selection endpoint; finished runs are re-evaluated with
+> `--mode evaluate_all`. The numbers below are the Messidor-only evaluation of the old code. Next steps: `SERVER_TODO.md`.
+
 **As of:** 2026-11-03 18:30 (cluster local time) — refreshed from live logs, `config_snapshot.yaml`
 files and `softlabels/` contents. A parallel wave (§4.1) is in flight: 5 seed replicates running,
 `sl_p4` finished 18:17 (soft labels **5/5**), so the AASL pair is unblocked but **not yet submitted**;

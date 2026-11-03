@@ -146,7 +146,7 @@ def test_phase6_selection_criteria():
             'cv_val_acc': '80.00', 'cv_val_qwk': '0.86', 'cv_val_bin_auroc': '0.90'
         }]).to_csv(os.path.join(c2_dir, 'summary.csv'), index=False)
 
-        phase_select(phase, 'p6_ref')
+        phase_select(phase, 'p6_ref', cfg={'select_endpoint': 'original'})
 
         # Check winner is p6_amp (not p6_uda because winner_eligible=false)
         winner_path = os.path.join(p_dir, 'WINNER.txt')

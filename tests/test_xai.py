@@ -36,8 +36,17 @@ from src.xai.grid import (
     load_display_and_input,
     create_contour_overlay,
     plot_xai_grid,
-    _create_synthetic_fundus,
 )
+
+
+def _create_synthetic_fundus(size: int = 512) -> np.ndarray:
+    """Synthetic fundus disc used only by these unit tests (the library no longer fabricates images)."""
+    img = np.zeros((size, size, 3), dtype=np.uint8)
+    cv2.circle(img, (size // 2, size // 2), int(size * 0.44), (30, 80, 180), -1)
+    cv2.circle(img, (int(size * 0.35), int(size * 0.5)), int(size * 0.08), (140, 200, 240), -1)
+    cv2.circle(img, (int(size * 0.6), int(size * 0.45)), 8, (20, 20, 120), -1)
+    cv2.circle(img, (int(size * 0.55), int(size * 0.65)), 12, (100, 230, 255), -1)
+    return img
 
 
 class ToyGapModel(nn.Module):

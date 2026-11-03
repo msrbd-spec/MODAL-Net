@@ -1,10 +1,13 @@
 """Shared pytest fixtures.
 
-Several tests write into repo-relative output folders ("results/<phase>/<tag>",
-"checkpoints/<tag>", "logs/<tag>", "splits/*.json"). Those are the SAME paths the
-real experiments use, so a test run concurrent with a training run would clobber
-real artifacts. Tests that write there request the isolated_cwd fixture so every
-relative path resolves inside their own tmp directory.
+Every test runs with its working directory set to its own temporary folder (autouse fixture
+`_isolated_project`). Relative output paths used by the code ("results/<phase>/<tag>",
+"checkpoints/<tag>", "logs/<tag>", "splits/*.json", "splits/external/*.csv") therefore always resolve
+inside that folder, and a test run can never overwrite the real splits, results or checkpoints of the
+project (an earlier version of the suite overwrote splits/messidor_*_ids.json and wrote synthetic
+rows into results/master and results/tables).
+
+`isolated_cwd` is kept as an alias for tests that want the temporary path explicitly.
 """
 import os
 import shutil
@@ -12,47 +15,35 @@ from pathlib import Path
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 
 @pytest.fixture(scope='session')
 def repo_root():
-    """Absolute project root, captured once at session start (before any test chdirs away).
-
-    The artefact guard anchors on this instead of the current working directory, so a test that
-    runs inside its own tmp dir stays free while a cleanup that escapes it (absolute path, ../..,
-    or a teardown running after the chdir was undone) is still recognised as a real artefact.
-    """
-    return Path.cwd().resolve()
+    """Absolute project root (the folder that contains main.py)."""
+    return REPO_ROOT
 
 
-@pytest.fixture
-def isolated_cwd(tmp_path, monkeypatch):
-    """Run the test with cwd = tmp_path, with empty output dirs available."""
-    (tmp_path / 'configs').mkdir(exist_ok=True)
-    src = Path('configs/config.yaml')
-    if src.is_file():
-        shutil.copy(src, tmp_path / 'configs' / 'config.yaml')
-    for name in ('results', 'checkpoints', 'logs', 'splits', 'data'):
+@pytest.fixture(autouse=True)
+def _isolated_project(tmp_path, monkeypatch):
+    """cwd = a fresh temporary project with configs/ copied and empty output folders."""
+    shutil.copytree(REPO_ROOT / 'configs', tmp_path / 'configs')
+    for name in ('results', 'checkpoints', 'logs', 'splits', 'softlabels', 'data'):
         (tmp_path / name).mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
 
-@pytest.fixture(autouse=True)
-def _protect_artifacts(request, monkeypatch, repo_root):
-    """Hard guard: no test may delete anything inside the real results/checkpoints/splits/logs.
+@pytest.fixture
+def isolated_cwd(_isolated_project):
+    return _isolated_project
 
-    A synthetic fixture that rmtree()d the repo-relative "results/<phase>" folder once wiped a
-    complete real phase folder (checkpoints survived, but every oof.npz / predictions_*.npz /
-    summary.csv / WINNER.txt of that phase was lost). Requesting `isolated_cwd` is deliberately
-    NOT an exemption any more: deletions inside the test's own tmp dir resolve outside repo_root
-    and stay allowed, while anything landing inside a real tree raises. Cleanups in isolated tests
-    must therefore be anchored on the tmp path returned by isolated_cwd. os.rmdir is not
-    intercepted (tests/test_zz_guard_check.py uses it to remove its probe folder).
-    """
-    protected = [repo_root / name for name in ('results', 'checkpoints', 'splits', 'logs')
-                 if (repo_root / name).is_dir()]
-    if not protected:
-        return
+
+@pytest.fixture(autouse=True)
+def _protect_artifacts(request, monkeypatch, _isolated_project):
+    """Hard guard: no test may delete anything inside the real results/checkpoints/splits/logs/softlabels."""
+    protected = [REPO_ROOT / name for name in ('results', 'checkpoints', 'splits', 'logs', 'softlabels')
+                 if (REPO_ROOT / name).is_dir()]
 
     def _guard(target, action):
         tgt = Path(target).resolve()
@@ -60,9 +51,7 @@ def _protect_artifacts(request, monkeypatch, repo_root):
             if tgt == prot or prot in tgt.parents:
                 raise RuntimeError(
                     f'BLOCKED: {request.node.name} tried to {action} {tgt}, which is inside the '
-                    f'real {prot.name} tree. Run the test with the isolated_cwd fixture and anchor '
-                    f'its cleanup paths on the temporary directory it returns.'
-                )
+                    f'real {prot.name} tree.')
 
     real_rmtree = shutil.rmtree
 
@@ -71,13 +60,11 @@ def _protect_artifacts(request, monkeypatch, repo_root):
         return real_rmtree(path, *args, **kwargs)
 
     monkeypatch.setattr(shutil, 'rmtree', guarded_rmtree)
-
     for _name in ('remove', 'unlink'):
         def guarded(path, *args, _real=getattr(os, _name), _n=_name, **kwargs):
             _guard(path, f'run os.{_n} on')
             return _real(path, *args, **kwargs)
         monkeypatch.setattr(os, _name, guarded)
-
     real_path_unlink = Path.unlink
 
     def guarded_path_unlink(self, *args, **kwargs):

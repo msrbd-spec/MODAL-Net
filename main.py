@@ -7,7 +7,7 @@ Usage:
                  [--members a,b,c] [--kind K] [--method M]
                  [--reference T|@phase] [--design parallel] [--csv path]
 
-See MODAL_Part1.md S7b for details.
+See agent_context/MODAL_PART1.md S7b and commands.md for every mode.
 """
 
 import argparse
@@ -19,11 +19,11 @@ os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
 
 ALL_MODES = [
-    'make_splits', 'dedup_audit', 'detect_lesions', 'import_zoo',
-    'pretrain', 'experiment', 'train', 'test', 'external_validation',
+    'make_splits', 'dedup_audit', 'dedup_external', 'make_external_splits', 'detect_lesions', 'import_zoo',
+    'pretrain', 'experiment', 'train', 'test', 'external_validation', 'evaluate', 'evaluate_all',
     'make_softlabels', 'inference_experiment', 'ensemble_experiment',
-    'feature_balance', 'calibrate_conformal', 'phase_select',
-    'seed_summary', 'master_table', 'report', 'xai',
+    'calibrate_conformal', 'phase_select',
+    'seed_summary', 'master_table', 'report', 'xai', 'xai_localization',
 ]
 
 
@@ -46,8 +46,7 @@ def main():
                         help='Comma-separated tags for ensemble')
     parser.add_argument('--kind', default=None,
                         help='Pretrain kind: eyepacs_sup | ssl | ssl_sup')
-    parser.add_argument('--method', default=None,
-                        help='Feature balance method')
+    parser.add_argument('--method', default=None, help=argparse.SUPPRESS)
     parser.add_argument('--reference', default=None,
                         help='Reference tag for phase_select')
     parser.add_argument('--design', default=None,
@@ -112,13 +111,23 @@ def main():
         fold = args.fold if args.fold is not None else 0
         train_fold(cfg, fold, tag, logger)
 
-    elif args.mode == 'test':
-        from src.evaluation.experiment import run_experiment
-        run_experiment(cfg)
+    elif args.mode in ('test', 'external_validation', 'evaluate'):
+        # Re-evaluate a finished experiment on every evaluation set (no retraining)
+        assert args.tag, '--tag is required for evaluate'
+        from src.evaluation.evaluate import run_evaluate
+        run_evaluate(cfg)
 
-    elif args.mode == 'external_validation':
-        from src.evaluation.experiment import run_experiment
-        run_experiment(cfg)
+    elif args.mode == 'evaluate_all':
+        from src.evaluation.evaluate import run_evaluate_all
+        run_evaluate_all(cfg)
+
+    elif args.mode == 'dedup_external':
+        from tools.dedup_audit import run_dedup_external
+        run_dedup_external(cfg)
+
+    elif args.mode == 'make_external_splits':
+        from src.data.external import make_external_splits
+        make_external_splits(cfg)
 
     elif args.mode == 'pretrain':
         from src.training.pretrain import run_pretrain
@@ -137,10 +146,6 @@ def main():
         from src.evaluation.experiment import run_ensemble_experiment
         run_ensemble_experiment(cfg)
 
-    elif args.mode == 'feature_balance':
-        from src.training.feature_balance import run_feature_balance_experiment
-        run_feature_balance_experiment(cfg)
-
     elif args.mode == 'calibrate_conformal':
         from src.evaluation.experiment import run_calibrate_conformal
         run_calibrate_conformal(cfg)
@@ -149,12 +154,11 @@ def main():
         from src.evaluation.tables import phase_select
         assert args.phase is not None, '--phase is required for phase_select'
         assert args.reference is not None, '--reference is required for phase_select'
-        phase_select(args.phase, args.reference, design=getattr(args, 'design', 'parallel'))
+        phase_select(args.phase, args.reference, design=getattr(args, 'design', 'parallel'), cfg=cfg)
 
     elif args.mode == 'seed_summary':
         from src.evaluation.tables import seed_summary
-        phase = args.phase or 'phase9_final'
-        seed_summary(phase)
+        seed_summary(args.phase, reference=args.reference or cfg.get('seed_reference'))
 
     elif args.mode == 'master_table':
         from src.evaluation.tables import master_table
@@ -164,12 +168,17 @@ def main():
         from src.evaluation.tables import master_table, build_paper_tables
         from src.evaluation.figures import build_paper_figures
         master_table()
-        build_paper_tables()
-        build_paper_figures()
+        build_paper_tables(cfg=cfg)
+        build_paper_figures(cfg=cfg)
 
     elif args.mode == 'xai':
         from src.xai.grid import run_xai_experiment
         run_xai_experiment(cfg)
+
+    elif args.mode == 'xai_localization':
+        assert args.tag, '--tag is required for xai_localization'
+        from src.xai.localization import run_xai_localization
+        run_xai_localization(cfg)
 
     else:
         raise ValueError(f'Unknown mode: {args.mode}')

@@ -13,6 +13,22 @@ S0. NAME AND AGENT RULES
 - After each work package (S13 in Part 2): python -c "import ast,sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]" <changed files>, run that package's tests (S14 in Part 2), list every changed file.
 - All numbers written to CSV / tables / figures use 2 decimals (accuracy and recalls in percent 0-100, QWK/AUROC/F1 as 0.00-1.00).
 
+S0b. REVISION 2026-11-03 (read first; every section below was corrected in place where it no longer matched the code)
+- Why: in-domain APTOS is saturated (19 arms: OOF QWK 0.92-0.93), the OOF-only adoption rule rejected the only large effect
+  (joint APTOS+EyePACS: Messidor-TEST QWK 0.70 -> 0.80, mild recall 0.10 -> 0.33), and one single-site external set is too weak for the claims.
+- Evaluation: every experiment is now evaluated on APTOS OOF, APTOS test and the dev + test split of four external datasets
+  (Messidor-2, DDR, DeepDRiD, IDRiD) with the same 5-class, referable and calibration metrics (S4b, S5b, S7p, S7q). Finished arms are
+  re-evaluated without retraining (--mode evaluate / evaluate_all).
+- Selection: amended primary endpoint = mean held-out external-DEV QWK with APTOS OOF non-inferiority; both endpoints are always reported (S1, S7l).
+- New component (literature check before claiming): coral_src = one severity score + ordered cut-points, optionally one cut-point offset
+  vector per training source; unseen sites use the shared cut-points; few-shot site calibration of the 4 cut-points is reported (S7r).
+- New evidence tools: cut-point diagnostic, leakage check, duplicate review, expert-mask XAI localisation on DDR / IDRiD lesion masks (S7s, S7t).
+- Integrity fixes: paper tables / figures no longer contain invented numbers (they are built from real artefacts or skipped); the XAI
+  code no longer substitutes a synthetic image; --set rejects unknown keys; AASL training stops when soft labels are missing; the
+  test-suite runs every test in a temporary folder (it had overwritten splits/ and results/master on the Mac).
+- Removed: feature_balance (phase 7) and the wavelet gate (use_wghr). Stopped: SSL pretraining (reported as a negative control).
+- Run order from the current server state: SERVER_TODO.md; command reference: commands.md; deletions: SERVER_CLEANUP.md.
+
 S1. TARGETS, PRIORS, DECISION RULES
 - Owner targets (STRETCH, not guaranteed): internal 5-class acc 92%, internal binary acc 98-99%, external 5-class acc 85%, external binary acc 92%. Binary = referable DR (grades 2,3,4 vs 0,1), score = P2+P3+P4.
 - Evidence: zoo MaxViT-L (single fold models): acc 85.19+-0.95, QWK 0.90, bin 93.77, ext 65.21, ext QWK 0.59, ext bin 85.17; train acc 93-99 (overfit). Messidor-2 (n=1744; 1017/270/347/75/35): models predict No DR for
@@ -22,6 +38,13 @@ S1. TARGETS, PRIORS, DECISION RULES
 - Decision tiers per experiment vs its reference (paired bootstrap, 10,000 resamples, Holm inside the phase): ADOPT = 95% CI of the primary gain excludes 0 and guard metrics do not drop more than the tolerance
   (referable AUROC -0.005, OOF QWK -0.005); TENTATIVE = point gain >= +0.005 QWK but CI includes 0 (allowed ONLY for the a-priori regularisation items of phase2a); REJECT otherwise.
   Rejected components are never carried forward and are still reported. Experiments flagged winner_eligible=false (UDA, dev-calibrated, ensembles) never become winners.
+- AMENDED ENDPOINT (2026-11-03, written before any phase-4j result existed): primary = mean QWK over the held-out external DEV sets
+  (select_dev_sets = messidor, ddr, deepdrid, idrid; a dataset used for training is excluded for that comparison), paired bootstrap with each
+  dataset resampled independently; ADOPT iff its 95% CI lower bound > 0 and its Holm-adjusted p < 0.05 within the phase, the point
+  estimate Delta OOF QWK >= -0.005 (APTOS non-inferiority guard, point estimate as in the original rule) and the point estimate Delta
+  mean-DEV referable AUROC >= -0.005. Winner = eligible arm with the largest paired Delta mean-DEV QWK (both on the same held-out sets). In-domain differences are tested for equivalence (TOST via the 90% CI inside +-0.01, column oof_equivalent).
+  The original rule above is still computed for every phase (decision_original) and reported next to the amended one (decision_amended).
+  Seed is the unit of analysis for headline claims (seed_summary / seed_compare.csv); phase-table CIs are over images of one seed.
 - Overall kill: if after phase6 the external TEST QWK gain over the plain MaxViT-L baseline is < 0.05 (CI includes 0), stop adding methods; write the paper around the analysis/protocol and the calibrated selective-prediction layer.
 
 S2. CONTRIBUTIONS (claimable) AND WHAT IS NOT NEW
@@ -31,6 +54,15 @@ S2. CONTRIBUTIONS (claimable) AND WHAT IS NOT NEW
  C4 ordinal-interval conformal selective prediction for referable-DR screening. Not new: split conformal, selective prediction (verify ordinal-conformal literature).
  C5 evaluation protocol: dedup audit, grouped Messidor dev/test split, selection guard, cross-architecture error analysis, external under-grading analysis.
  Optional: zero-init wavelet-gated residual stem (prior ~0 gain), feature-level balancing (kept only if it beats cheap comparators).
+   [2026-11-03] Both removed from the code and the plan.
+ C1 status [2026-11-03]: the SSL part is a negative control (contrastive loss collapsed with batch 8 / 15 negatives; ext AUROC -0.030);
+   the claim rests on labelled multi-source training (joint APTOS + EyePACS) and its mechanism (dose-response p3c_dose*).
+ C6 [2026-11-03] cut-point shift hypothesis + source-specific ordinal cut-points (coral_src): external under-grading is measured as a
+   cut-point shift (cut-points refitted on each site's DEV; few-shot curve n = 10/25/50/100) and addressed by a shared severity score with
+   per-source cut-point offsets. Literature search before claiming: "rater-specific thresholds ordinal regression", "annotator-specific
+   cut-points deep ordinal", "dataset-specific thresholds diabetic retinopathy grading", "CORAL rank consistent ordinal multi-source".
+ C7 [2026-11-03] multi-site evaluation on four external datasets with official splits, evaluation-side duplicate exclusion, leakage report,
+   and expert-mask (DDR / IDRiD) localisation of the model's attention.
  Literature searches before claiming: "lesion-aware self-supervised diabetic retinopathy EyePACS", "ordinal conformal prediction diabetic retinopathy", "domain generalization fundus Messidor-2 MixStyle Fourier",
  "confident learning diabetic retinopathy label noise", "squared EMD ordinal loss".
 
@@ -56,6 +88,25 @@ S4. DATASETS (existing, keep exactly; paths are in configs/config.yaml -> paths)
     Fundus images look alike: review the top pairs visually. Rules: duplicates inside APTOS stay in the same fold/test (use groups); any EyePACS image duplicating an APTOS or Messidor image is excluded from EyePACS training; report counts.
   Preprocessing parity hypothesis (to be tested in phase2b, not assumed): the legacy pipeline = crop fundus bounding box -> CLAHE (LAB, clip 2.0, 8x8) -> Ben Graham with sigma=10 at NATIVE resolution -> albumentations Resize(512,512) that STRETCHES non-square crops.
     Native resolution differs by dataset (APTOS up to ~4000 px, Messidor 1440-2304 px), so sigma and aspect ratio are not comparable across domains.
+
+S4b. EXTERNAL DATASETS ADDED 2026-11-03 (src/data/external.py; paths in configs/config.yaml -> paths)
+  datasets/DDR-dataset/DR_grading/{train,valid,test}/*.jpg + {train,valid,test}.txt ("<file> <grade>", grade 5 = ungradable, dropped)
+  datasets/DDR-dataset/lesion_segmentation/{images,annotations}/{train,val,test|tet}/{EX,HE,MA,SE}/*.tif   (expert lesion masks, XAI only)
+  datasets/DeepDRiD/regular_fundus_images/{regular-fundus-training,regular-fundus-validation,Online-Challenge1_2-Evaluation}/Images/<patient>/<image_id>.jpg
+      labels: training / validation csv (one label per IMAGE from the eye-level column; the non-empty one of left_eye_DR_Level / right_eye_DR_Level),
+      test labels Challenge1_labels.xlsx (read with a built-in xlsx reader; no openpyxl on the cluster). Ultra-widefield images are not used.
+  datasets/IDRiD/B. Disease Grading/{1. Original Images/{a. Training Set,b. Testing Set}, 2. Groundtruths/*.csv}  (ids carry tr_/te_ prefixes: file names repeat)
+  datasets/IDRiD/A. Segmentation/  (expert lesion masks MA/HE/EX/SE, XAI only)
+  Splits (official where shipped): messidor dev/test = the existing exam-grouped DEV/TEST; ddr train/dev/test = official train/valid/test;
+  deepdrid train/dev/test = official training/validation/evaluation (patient-disjoint); idrid dev/test = official training/testing.
+  The train split exists only for datasets that may be added as a training source (extra_sources: eyepacs, ddr, deepdrid).
+  --mode dedup_external audits the new datasets against APTOS, EyePACS, Messidor-2 and each other (re-uses cached hashes) ->
+  results/phase0_protocol/audit/duplicates_external.csv. --mode make_external_splits freezes splits/external/<dataset>_<split>.csv after removing
+  every DDR / DeepDRiD / IDRiD evaluation image whose pHash distance to any training-pool image (APTOS CV pool, labelled EyePACS, DDR train,
+  DeepDRiD train) is <= dedup_exclude_max (default 4); removed pairs -> splits/external/exclusions.csv (review with tools/dup_review.py);
+  counts -> manifest.json and splits_summary.csv. The APTOS test set (366) and Messidor-2 DEV / TEST are never filtered (finished runs were
+  scored on exactly these images); their overlap with each run's training images is reported by tools/leakage_check.py.
+  Snapshots are merged into the defaults key by key for nested dicts (paths), so runs made before the new datasets keep their paths.
 
 S5. OUTPUT LAYOUT (created by the code; results are grouped by phase, then experiment)
   checkpoints/
@@ -92,24 +143,48 @@ S5. OUTPUT LAYOUT (created by the code; results are grouped by phase, then exper
     ece_test, ece_ext, train_val_gap, decision, is_winner, notes.      (protocol = 'ensemble5_tta' for 5-fold ensembles, 'single_fold_mean' for imported zoo rows)
     set_overrides is stored with json.dumps(overrides) (so null/true/false survive and yaml.safe_load can read it back).
   phase_table.csv = all summary rows of the phase + reference, d_oof_qwk, ci_lo, ci_hi, p_holm, d_bin_auroc, d_extdev_qwk, d_extdev_mild_recall, decision (ADOPT/TENTATIVE/REJECT/REFERENCE), winner.
+S5b. OUTPUTS ADDED 2026-11-03 (src/evaluation/evaluate.py writes them for every mode; the legacy files above are still written)
+  splits/external/<dataset>_<split>.csv  exclusions.csv  manifest.json        results/phase0_protocol/audit/duplicates_external.csv, phash_<DATASET>.npz
+  Inside every results/<phase>/<experiment>/:
+    predictions_<set>.npz for set in aptos_test, messidor_dev, messidor_test, ddr_dev, ddr_test, deepdrid_dev, deepdrid_test, idrid_dev, idrid_test
+        (ids, y_true, y_pred, y_prob [temperature-scaled ensemble], y_prob_raw [raw ensemble], y_prob_folds [raw per fold]);
+        predictions_test / _external_dev / _external_test.npz remain as aliases of aptos_test / messidor_dev / messidor_test.
+    metrics_long.csv   experiment, phase, set, dataset, split, in_source, task (5class|binary|calibration|count|devcal), metric, value, ci_lo, ci_hi, n
+    per_class.csv (set x class), binary.csv (one row per set), calibration.csv (one row per set), confusion_<set>.csv
+    cutpoints.csv      per external dataset: 4 cut-points refitted on its DEV split and argmax vs dev-calibrated TEST metrics
+    fewshot.csv        per external dataset: TEST metrics after refitting the cut-points on n random DEV images (n = fewshot_n, fewshot_draws draws)
+    source_thresholds_fold<k>.json   coral_src only: shared and per-source cut-points
+    xai/xai_localization.csv, xai_localization_images.csv, xai_localization_notes.txt   (--mode xai_localization)
+    figures/ cm_<set>, reliability_<set>, roc and pr over every test set (cm_test, cm_external, reliability kept as aliases)
+  summary.csv adds: train_sources, heldout_sets, seed, head_type, winner_eligible, <set>_<metric> for every set and metric
+    (acc, qwk, prec_macro, rec_macro, f1_macro, adj_acc, mae, mild_recall, pred_nodr_share, prec/rec/f1_c0..c4, bin_acc, bin_prec, bin_sens,
+    bin_spec, bin_f1, bin_auroc, bin_auprc, sens_at_spec90, sens_at_spec95, ece, nll, brier, n), <dataset>_test_devcal_<metric>,
+    ext_mean_{dev,test}_<metric> over the held-out external datasets and ext_mean_{dev,test}_sets. Legacy meaning kept: test_* = APTOS test,
+    ext_* = Messidor-2 TEST, extdev_* = Messidor-2 DEV. Zoo rows store their all-1,744-image external numbers as ext_full1744_* (never ext_*).
+  phase_table.csv adds: decision_original, decision_amended, endpoint, d_dev_mean_qwk (+ CI), dev_p_holm, d_dev_mean_auroc, d_dev_mean_mild_recall,
+    dev_sets_used, oof_tost_lo90/hi90, oof_equivalent; phase_table_<endpoint>.csv is always written (select_report_only=true writes only it).
+  results/master/ adds master_long.csv (all metrics_long rows), seed_variance.csv (group x metric), seed_compare.csv, evaluate_all_report.csv,
+    cutpoint_diagnostic.csv, leakage_check.csv, leakage_pairs.csv. results/tables/TABLES_README.txt and results/figures/FIGURES_README.txt
+    list what was written and what was skipped (missing inputs) — nothing is filled with invented values.
 
 S6. REPOSITORY TREE (create all)
   MODAL-Net/
     main.py  requirements.txt  README.md  pytest.ini  .gitignore
     configs/ config.yaml  config_ssl.yaml
     datasets/ (README.md, existing data symlinked, images never committed)   splits/   checkpoints/   logs/   softlabels/   results/
-    tools/dedup_audit.py  tools/env_report.py
+    tools/dedup_audit.py (+ run_dedup_external)  tools/env_report.py  tools/rebuild_oof.py  tools/cutpoint_diagnostic.py  tools/leakage_check.py  tools/dup_review.py
+    SERVER_TODO.md  SERVER_CLEANUP.md  commands.md  RESULTS_STATUS.md
     agent_context/ (tracked: MODAL_PART1.md, MODAL_PART2.md, MODAL_PART3.md, baseline_result.csv, legacy_seed/)
     src/
       utils/        config.py paths.py logger.py seed.py io_utils.py
-      data/         splits.py preprocess.py datasets.py augment.py samplers.py amplitude_mix.py eyepacs_dataset.py(seed)
+      data/         splits.py external.py preprocess.py datasets.py augment.py samplers.py amplitude_mix.py eyepacs_dataset.py(seed)
       preprocessing/lesion_detection.py(seed)
-      models/       gradenet.py mixstyle.py wavelet_gate.py ssl_model.py(seed, adapted)
+      models/       gradenet.py mixstyle.py ssl_model.py(seed, adapted)          [wavelet_gate.py removed 2026-11-03]
       losses/       losses.py
-      training/     trainer.py ema.py softlabels.py pretrain.py ssl_trainer.py(seed) feature_balance.py
-      evaluation/   metrics.py stats.py predict.py conformal.py calibration.py experiment.py tables.py figures.py
-      xai/          cams.py grid.py
-    tests/          test_*.py (T1-T16)
+      training/     trainer.py ema.py sam.py softlabels.py pretrain.py ssl_trainer.py(seed)   [feature_balance.py removed 2026-11-03]
+      evaluation/   metrics.py stats.py predict.py conformal.py calibration.py cutpoints.py evaluate.py experiment.py tables.py figures.py
+      xai/          cams.py grid.py localization.py
+    tests/          conftest.py (every test in a temporary folder), synth.py (miniature synthetic project), test_*.py (T1-T22)
 
 S7. CODE SPECIFICATION
 S7a. configs/config.yaml (defaults; every key can be overridden with --set key=value)
@@ -128,14 +203,30 @@ S7a. configs/config.yaml (defaults; every key can be overridden with --set key=v
     tta: none  tta_scales: [1.0]  temperature_scaling: true  conformal_alpha: 0.10  recalibrate: none  winner_eligible: true  bundle_from: null  ckpt_from: null
     pre_epochs: 15  ssl_init: null
     xai_seed: 0  xai_top_k: 10  xai_methods: [gradcampp, gradcam, layercam, eigencam]  xai_show_lesions: true  xai_split: test  xai_alpha: 0.5  xai_quant: false  xai_quant_max_images: 400
+  [2026-11-03] added: paths.ddr {root, lesion_root}, paths.deepdrid {root, train_dir, train_csv, val_dir, val_csv, test_dir, test_labels},
+    paths.idrid {root, train_images, test_images, train_csv, test_csv, lesion_root}; pretrained: true; description: null;
+    head_type: softmax|coral|coral_src; src_offsets: true; src_offset_l2: 0.1; extra_sources: []; source_w: 0.5; source_max: 20000;
+    external_sets: [messidor, ddr, deepdrid, idrid]; eval_overwrite: false; evaluate_only: []; bootstrap_ci: 1000; fewshot_n: [10, 25, 50, 100];
+    fewshot_draws: 20; dedup_exclude_max: 4; select_endpoint: amended; select_report_only: false; select_dev_sets: [messidor, ddr, deepdrid, idrid];
+    tost_margin: 0.01; noninf_margin: 0.005; seed_reference: p2b_none; report_final: null; report_baseline: null; xai_loc_method: gradcampp;
+    xai_loc_dilate: 15; backbone_global_pool: null (timm global_pool override; avg for the RETFound ViT baseline). Removed: use_wghr.
+    llrd_groups: for ViT backbones (timm patch_embed + blocks.i) the layer-decay schedule of BEiT / MAE / RETFound (embeddings level 0,
+    block i level i+1, final norm top); MaxViT / ConvNeXt / EfficientNet keep the original 5-level stem/stages schedule. pretrain_path accepts
+    project backbone state dicts, {'state_dict': ...} and MAE / RETFound {'model': ...} checkpoints (head.* dropped, shapes checked). The backbone actually used is maxvit_large_tf_512.in1k (config.yaml), not the in21k id written above.
   Defaults = the a-priori MODAL recipe (regularisation, mixup, EMA, ordinal smoothing, LLRD) except aug (basic, tested in phase2a) and preproc (legacy, tested in phase2b). The plain zoo-like baseline is created with explicit overrides in phase2a.
   tta defaults to none to keep the ~40 experiments fast (8 views x 5 models x 3 sets is slow); TTA is decided in phase8 and the final runs set it explicitly.
 S7b. CLI (main.py) and config resolution (src/utils/config.py)
     python main.py --mode MODE [--phase P] [--tag T] [--inherit T|@phase] [--set k=v ...] [--fold N] [--base T|@phase] [--members a,b,c] [--kind K] [--method M] [--reference T|@phase]
                    [--design parallel] [--csv path]
-    MODES: make_splits dedup_audit detect_lesions import_zoo pretrain experiment train test external_validation make_softlabels inference_experiment ensemble_experiment feature_balance
-           calibrate_conformal phase_select seed_summary master_table report xai
+    MODES: make_splits dedup_audit dedup_external make_external_splits detect_lesions import_zoo pretrain experiment train evaluate evaluate_all
+           (test and external_validation are aliases of evaluate) make_softlabels inference_experiment ensemble_experiment calibrate_conformal
+           phase_select seed_summary master_table report xai xai_localization          [feature_balance removed 2026-11-03]
     def parse_set(pairs): return {p.split('=', 1)[0]: yaml.safe_load(p.split('=', 1)[1]) for p in pairs}       # values: true/false/null/numbers/lists/strings
+      [2026-11-03] parse_set raises ValueError for a token without '=' and for a key that is not a top-level key of configs/config.yaml or
+      configs/config_ssl.yaml (close matches are suggested). validate_cfg also checks head_type, extra_sources (subset of eyepacs/ddr/deepdrid,
+      not together with joint_eyepacs), external_sets / select_dev_sets (subset of messidor/ddr/deepdrid/idrid), select_endpoint, xai_split
+      (test | external_test | <dataset>_<dev|test>), and forbids coral/coral_src with soft labels. evaluate / xai / xai_localization restore the
+      snapshot of their own tag like test / external_validation / calibrate_conformal.
     def resolve(x):                         # '@phase2a_recipe' -> tag written in results/phase2a_recipe/WINNER.txt (first token of the file)
         return open(f'results/{x[1:]}/WINNER.txt').read().split()[0] if x and x.startswith('@') else x
     def find_exp(tag): return sorted(glob.glob(f'results/phase*/{tag}'))[0]        # results folder of an experiment, whatever phase it belongs to (cross-phase references)
@@ -243,7 +334,7 @@ S7g. src/models/gradenet.py (MixStyle is part of the model so .train()/.eval() a
             if cfg.get('img_size_arg'): kw['img_size'] = cfg['img_size_arg']
             self.backbone = timm.create_model(cfg['backbone'], **kw)
             if cfg['grad_checkpointing']: self.backbone.set_grad_checkpointing(True)
-            self.wghr = WaveletGate() if cfg['use_wghr'] else nn.Identity()
+            [2026-11-03] the wavelet gate line was removed (use_wghr no longer exists)
             self.ms_idx = list(cfg['ms_stages']) if cfg['mixstyle'] else []; self.ms = nn.ModuleList([MixStyle(cfg['ms_p'], cfg['ms_alpha']) for _ in self.ms_idx])
             K = cfg['num_classes']; out = K - 1 if cfg['head_type'] == 'coral' else K
             self.head = nn.Sequential(nn.Dropout(cfg['head_dropout']), nn.Linear(self.backbone.num_features, out))
@@ -297,6 +388,15 @@ S7g. src/models/gradenet.py (MixStyle is part of the model so .train()/.eval() a
         As[cy-b:cy+b, cx-b:cx+b] = (1 - lam) * As[cy-b:cy+b, cx-b:cx+b] + lam * At[cy-b:cy+b, cx-b:cx+b]
         out = np.fft.ifft2(np.fft.ifftshift(As * np.exp(1j * Ps), axes=(0, 1)), axes=(0, 1)).real
         return np.clip(out * (s.sum(2, keepdims=True) > 15), 0, 255).astype(np.uint8)                  # keep the black border
+S7g-2026-11-03. coral_src head (SourceOrdinalHead in src/models/gradenet.py)
+    logit P(y > k | x, source d) = s(x) - b_k^(d);  s(x) = w^T f(x) (one score, Linear without bias);  b^(d) = ordered(raw + delta_d) with
+    ordered(r)_0 = r_0, ordered(r)_k = ordered(r)_{k-1} + softplus(r_k) (always strictly increasing); raw initialised to cut-points -1.5..1.5;
+    delta (n_sources x 4) zero-initialised, penalised by src_offset_l2 * ||delta||^2 and excluded from weight decay. Sources = train_sources(cfg)
+    = ['aptos'] + ['eyepacs' if joint_eyepacs] + extra_sources; domain ids aptos 0, eyepacs 1, messidor 2, ddr 3, deepdrid 4, idrid 5
+    (src_lut buffer, not saved in the state dict, so old checkpoints load unchanged). GradeNet.forward(x, domain=None): training passes the
+    batch domains (per-source cut-points); every inference path passes none -> shared cut-points = zero-shot prediction for an unseen site.
+    src_offsets=false gives the rank-consistent ordinal head without offsets (ablation). probs_from_logits treats coral and coral_src alike.
+    GradeNet.source_thresholds() -> {'shared': [...], '<source>': [...]}, saved per fold as results/<phase>/<tag>/source_thresholds_fold<k>.json.
 S7h. src/losses/losses.py
     def ordinal_gaussian(y, K=5, sigma=0.7): k = torch.arange(K, device=y.device)[None].float(); g = torch.exp(-(k - y[:, None].float()) ** 2 / (2 * sigma ** 2)); return g / g.sum(1, keepdim=True)
     def soft_ce(z, q, w=None): l = -(q * F.log_softmax(z, 1)).sum(1); return (l * w).sum() / w.sum() if w is not None else l.mean()
@@ -306,6 +406,8 @@ S7h. src/losses/losses.py
         if cfg['head_type'] == 'coral': return coral_loss(z, y)
         L = soft_ce(z, q, w)
         return (L + cfg['lambda_emd'] * emd2(z, q, w)) if cfg['loss'] == 'ce_emd' else L
+    [2026-11-03] coral_loss(z, y, K, w=None): with sample weights w the per-sample BCE is weighted (multi-source / joint training);
+      without w it is the plain mean as before. total_loss uses it for head_type coral and coral_src.
     base_target(y, cfg) = (1-eps)*onehot + eps*ordinal_gaussian(y, sigma) (eps = cfg.ordinal_eps; eps 0 => one-hot); nested soft labels Q (S7k) already include the ordinal smoothing. Mixup/CutMix mixes q exactly like the images.
 S7i. src/training/trainer.py (+ ema.py): one function per fold
     class ModelEMA: __init__(model, decay): self.m = copy.deepcopy(model).eval(); self.d = decay;  update(model): for e, p in zip(self.m.parameters(), model.parameters()): e.data.mul_(self.d).add_(p.data, alpha=1 - self.d); for be, b in zip(self.m.buffers(), model.buffers()): be.copy_(b)
@@ -330,6 +432,13 @@ S7i. src/training/trainer.py (+ ema.py): one function per fold
         6. early stopping on val QWK (patience cfg.patience; improvement threshold 1e-4); at every new best: save the evaluation model state_dict to checkpoints/<tag>/fold<k>.pth (out overrides the folder), fold<k>_val_metrics.json {epoch, val_acc, val_qwk, val_bin_auroc},
            and the OOF arrays results/<phase>/<tag>/oof_fold<k>.npz (ids, y, P).
         7. after all 5 folds (experiment mode): merge oof_fold*.npz -> oof.npz; thresholds.json = {'thr_spec90': threshold of the referable score at 90% specificity on the pooled OOF, 'thr_spec95': ..., 'temperature': fitted T}.
+    [2026-11-03] soft_labels=aasl: a missing softlabels/<run>/outer<k>.npz, a missing soft_label_run or a training image without a soft
+      label raises (the old code silently trained with plain CE). Ordinal heads (coral, coral_src) with mix_prob > 0 raise (mixing images
+      would pair them with the unmixed hard label). extra_sources: ConcatDataset([APTOS fold, source_1, ...]) with MultiSourceBatchSampler
+      (B/2 APTOS without replacement; B/2 split evenly between the sources, each drawn with p ~ 1/sqrt(class frequency); epoch = one APTOS pass);
+      non-APTOS samples weighted by source_w; each source capped at source_max images sampled once with the run seed. joint_eyepacs keeps the
+      original JointBatchSampler path unchanged (bit-compatible with p3b_joint and its seed replicates). coral_src forwards the batch domains
+      and adds the offset penalty to the loss.
     Resume: skip a fold if checkpoints/<tag>/fold<k>.pth and fold<k>_val_metrics.json exist and the snapshot matches. Gradient checkpointing and bf16 autocast are used on A100/H100; no GradScaler needed.
 S7j. src/evaluation: predict.py, metrics.py, stats.py, calibration.py, conformal.py
     predict.py:
@@ -344,6 +453,8 @@ S7j. src/evaluation: predict.py, metrics.py, stats.py, calibration.py, conformal
         (fitted on pooled OOF only), never from the evaluated set.
       calibration: ece(P, y, bins=15) = sum_b |acc_b - conf_b| * frac_b ; nll ; brier ; temperature scaling: fit T on OOF log-probabilities by minimising NLL (scipy minimize_scalar), apply to test/external probabilities when cfg.temperature_scaling.
       recalibrate == 'devcut': expected grade E = sum_k k*P_k; fit E' = a*E + b on Messidor-DEV (2 parameters, maximise QWK), predictions = digitize(E', [0.5, 1.5, 2.5, 3.5]); evaluated on Messidor TEST; labelled "dev-calibrated" (winner_eligible=false).
+      [2026-11-03] devcut is applied per external dataset (fit on its DEV, applied to its TEST). Independently of recalibrate, every experiment
+      reports 4 freely refitted cut-points per external dataset (cutpoints.csv) and the few-shot curve (fewshot.csv) — see S7r.
     stats.py:
       def paired_bootstrap(y, Pa, Pb, fn, B=10000, seed=0):
           rng = np.random.default_rng(seed); n = len(y); d = np.empty(B)
@@ -385,7 +496,8 @@ S7l. src/evaluation/experiment.py (one-shot experiment) and table builders (src/
     inference_experiment(--base tag): no training; owner = ckpt_owner of the base (follow ckpt_from until a tag that owns fold checkpoints); writes checkpoints/<tag>/config_snapshot.yaml with ckpt_from: <owner> and the base config plus the --set changes
       (tta / tta_scales / temperature_scaling / recalibrate / conformal_alpha); writes the same result files under its own results/<phase>/<tag>/ (oof.npz copied from the owner).
     ensemble_experiment(--members a,b,c): members may be @phase references; averages the members' saved probabilities (test, external dev/test, oof where available); writes the same files; winner_eligible=false.
-    feature_balance(--base, --method none|reweight|smote|gauss|lfsd): S7n; writes the same files with ckpt_from.
+    [2026-11-03] all modes evaluate every set of S5b through src/evaluation/evaluate.py (write_artifacts); run_experiment checks that every
+      evaluation / source split exists before training starts (check_eval_inputs). feature_balance was removed.
     import_zoo(--csv baseline_result.csv --phase phase1_zoo): columns Model,Best_Val_Acc,Final_Train_Acc,Accuracy,QWK,Precision,Recall,F1_Score,Bin_Acc,Bin_Prec,Bin_Rec,Bin_F1,Ext_Acc,Ext_QWK,Ext_Bin_Acc as "mean ± std" strings
       -> results/phase1_zoo/<MODEL>/summary.csv (cv_val_acc, train_acc, test_acc, test_qwk, test_prec_macro, test_rec_macro, test_f1_macro, test_bin_acc, test_bin_prec, test_bin_sens, test_bin_f1, ext_acc, ext_qwk, ext_bin_acc and *_std columns; other columns empty),
       protocol='single_fold_mean', ext_set='full1744' and results/phase1_zoo/zoo_table.csv.
@@ -398,6 +510,13 @@ S7l. src/evaluation/experiment.py (one-shot experiment) and table builders (src/
       ece_test, gpu_hours, decision, is_winner;  plus master_full.csv (all summary columns), master_per_class.csv, master_binary.csv, master_config.csv (experiment, set_overrides, inherit, config.yaml as flat key/value), master_deltas.csv (all phase_table delta columns),
       master_table.tex (booktabs, best bold per column, second underlined). Phase order = the order of the phase folders; zoo rows first.
     seed_summary(--phase phase9_final): mean +- std over seeds for final and baseline -> master/seed_variance.csv.
+    [2026-11-03] phase_select: see S1 AMENDED ENDPOINT and S5b; DEV predictions are read from predictions_<dataset>_dev.npz (legacy
+      predictions_external_dev.npz for Messidor), only datasets that are held out for both arms are used, mismatching DEV ids are reduced to the
+      common images. master_table: discovers every results/phase* folder (phase3c_*, phase4j_*, phase10_* included), moves zoo external columns
+      to ext_full1744_*, adds master_long.csv. seed_summary [--phase P] [--reference T]: seed replicates are grouped by configuration
+      (identical config except seed / metadata / evaluation-only keys; inference-only, ensemble and conformal tags excluded), whatever their tag
+      or folder; writes seed_variance.csv and seed_compare.csv (Welch t-test, seed = unit) against the reference group.
+      build_paper_tables / build_paper_figures(cfg): real inputs only (see Part 2 S11/S12); missing inputs are listed, never invented.
 S7m. LEGACY SEED ADAPTATION (files in legacy_seed/, keep the same relative paths; names verified against the files)
     src/preprocessing/lesion_detection.py: class LesionDetector (detect_microaneurysms / detect_hemorrhages / detect_exudates / detect_all) and detect_lesions_batch(image_dirs, output_dir, mask_size=128, extensions). Use as is.
       `python main.py --mode detect_lesions` calls detect_lesions_batch([paths.eyepacs.images], paths.eyepacs.lesion_labels, 128) (skips existing .npz). npz keys: mask[128,128,3], count[3], presence[3], heatmap[128,128].
@@ -412,7 +531,8 @@ S7m. LEGACY SEED ADAPTATION (files in legacy_seed/, keep the same relative paths
     If a seed file is missing, re-implement with the same output contracts.
     Supervised pretraining (src/training/pretrain.py): --kind eyepacs_sup: EyePACS frame (dedup-excluded), 2% held out for monitoring, GradeNet(cfg) from ImageNet weights, sqrt-inverse class sampler, loss soft_ce with ordinal smoothing, LLRD, EMA, pre_epochs, cfg.preproc and cfg.aug;
       save only model.backbone.state_dict() to checkpoints/pretrain/eyepacs_sup.pth. --kind ssl_sup: same but initialised with pretrain_path = cfg.ssl_init (the SSL backbone), saves checkpoints/pretrain/ssl_sup.pth.
-S7n. src/training/feature_balance.py (optional stretch)
+S7n. src/training/feature_balance.py (optional stretch)   [REMOVED 2026-11-03: phase 7 dropped (null expected, and its external evaluation read a
+    non-existent paths.messidor2 key and the wrong APTOS test folder). The text below is kept for the record only.]
     Extract penultimate features (backbone output) of the OOF-validation images with each fold model (not of its training images, which are over-separable); train a linear/MLP head on real + synthetic minority features with methods:
     none | reweight (logit adjustment: add tau*log prior to the logits in training, plain logits at test) | smote (same-class feature interpolation) | gauss (class-conditional Gaussian, shrinkage covariance) |
     lfsd (class-conditional 1-D DDPM, MLP denoiser, T=200, epsilon prediction). Evaluate with the same experiment outputs. Keep lfsd only if it beats the best cheaper method with a CI excluding 0.
@@ -431,6 +551,39 @@ S7o. src/xai: cams.py, grid.py (XAI grid figure and evaluation)
     - Post-processing: ReLU -> min-max to [0,1] -> bilinear upsample to 512x512 -> multiply by fundus_mask -> min-max. Per image: compute map with each fold model (loaded ONE AT A TIME for memory efficiency) and average normalized maps.
     - Layout: 5 rows (classes 0..4) x columns [Original | Grad-CAM++ | Grad-CAM | LayerCAM | Eigen-CAM | Detected lesions]. Width 7.2 in, square cells, 300 dpi, bold text, shared horizontal colorbar 'Normalised attention (0-1)'.
     - Outputs: results/<phase>/<tag>/xai/fig_xai_grid.{png,pdf}, copied to results/figures/fig16_xai_grid.{png,pdf}, xai_selection.csv, xai_caption_notes.txt, single overlays class<c>_<id>.png, optional xai_metrics.csv.
+    - [2026-11-03] copied to results/figures/xai_grid.{png,pdf} (the report clears fig*.png only). xai_split may be test | external_test |
+      <dataset>_<dev|test>; images of the external datasets are read from the frozen split paths. A missing image raises (the synthetic-fundus
+      fallback was removed). xai_quant=true computes the heuristic-mask enrichment with the fold-0 model on the chosen split (no placeholder).
+
+S7p. src/data/external.py [2026-11-03]
+    DOMAIN_IDS, DATASET_SPLITS, read_xlsx_first_sheet (zip + xml, shared/inline strings, numbers), raw_frame(cfg, dataset, split) (S4b),
+    training_pool_ids, load_audit_pairs (duplicates.csv + duplicates_external.csv), find_exclusions, make_external_splits (raises if a dataset of
+    external_sets / extra_sources is missing; checks every image file exists), external_frame (frozen csv; raises with the command to run),
+    eval_set_names (aptos_test + <dataset>_dev/_test), eval_frame (frame, dirs, domain id), source_frame (eyepacs / ddr / deepdrid train),
+    check_eval_inputs. DRDataset reads the explicit 'path' column when present.
+S7q. src/evaluation/evaluate.py [2026-11-03]
+    all_metrics (metrics5 + metrics_bin + ece/nll/brier + n), bootstrap_cis (percentile 95% CI over images, numpy fast path, rank AUROC),
+    predict_set, load_saved_set (y_prob_raw, or exact raw = mean of y_prob_folds for legacy files, which store temperature-scaled y_prob),
+    restrict_to_frame (re-use only when ids and labels cover the frozen split), collect_sets, write_artifacts (S5b; OOF metrics on raw
+    probabilities, every other set temperature-scaled with the OOF-fitted T), run_evaluate (finished tag, in place, keeps decision columns,
+    gpu_hours and notes), run_evaluate_ensemble (members' raw probabilities averaged, T refitted on the averaged OOF), run_evaluate_all
+    (models, then ensembles, then conformal tags; zoo skipped; report csv).
+S7r. src/evaluation/cutpoints.py [2026-11-03]
+    expected_grade E = P @ [0..4]; qwk_from_pred (== sklearn quadratic kappa); fit_cutpoints (4 ordered cut-points maximising QWK by coordinate
+    search over quantiles of E, starting at 0.5..3.5, deterministic); apply_cutpoints; grade_metrics; devcal (fit on DEV, apply on TEST);
+    fewshot_curve (rows argmax, default_cuts, n in fewshot_n with fewshot_draws random DEV subsets, all). For coral_src, E is monotone in the
+    latent score, so these cut-points partition images exactly like cut-points on the score.
+S7s. src/xai/localization.py [2026-11-03]  (--mode xai_localization --tag T)
+    Expert masks of DDR lesion_segmentation and IDRiD A. Segmentation (MA, HE, EX, SE; if DDR is a training source of T only DDR TEST images).
+    Target class = 1 + argmax P[1:] of the fold ensemble; CAM = cfg.xai_loc_method averaged over the 5 folds; masks mapped with the identical
+    crop / resize geometry (nearest) and dilated by xai_loc_dilate px. Per image (inside the fundus mask): energy_in_mask, enrichment
+    (= energy / lesion-area fraction; 1 = uniform), pointing_game, pixel_auroc (128 x 128). Mean + 95% bootstrap CI per dataset x lesion
+    -> xai/xai_localization.csv.
+S7t. tools [2026-11-03]
+    cutpoint_diagnostic.py --tags a,b  (saved predictions only, old Messidor files included; QWK gain CI, mild recall, No-DR share, AUROC)
+    leakage_check.py --tags a,b        (reconstructs each run's training images exactly as the trainer samples them; duplicates per evaluation set)
+    dup_review.py [--max-pairs N]      (contact sheet of the excluded evaluation images next to their matched training images)
+    dedup_audit.run_dedup_external     (--mode dedup_external; only comparisons that involve DDR / DeepDRiD / IDRiD)
 
 =====================================================================
 END OF PART 1. CONTINUE WITH PART 2 (phases, commands, tables, figures, tests, work packages, risks).
@@ -446,3 +599,10 @@ END OF PART 1. CONTINUE WITH PART 2 (phases, commands, tables, figures, tests, w
   - S7b: Added `xai` mode to CLI dispatch in `main.py`.
   - S7o: Created subsection specifying XAI CAM formulas, image selection rules, geometry parity, target layer resolutions (MaxViT stage-2 32x32, stage-3 16x16), and artifact outputs.
 - **Why**: Completed WP10-WP13 execution according to `agent_context/MODAL_PART3.md` (Step 1-6).
+- **Date**: 2026-11-03 (revision 2, see S0b)
+- **What changed**:
+  - S0b, S1 (amended endpoint), S2 (C1 status, C6, C7; optional items removed), S4b (external datasets), S5b (outputs), S6 (tree), S7a (keys),
+    S7b (modes, strict --set), S7g + S7g-2026-11-03 (coral_src; wavelet gate removed), S7h (weighted coral loss), S7i (strict soft labels,
+    multi-source sampler), S7j (devcut per dataset), S7l (evaluation core, selection, master, seed grouping, real-data tables), S7n (removed),
+    S7o (XAI paths, no synthetic fallback), new S7p-S7t.
+  - Why: see S0b. Run order: SERVER_TODO.md. Deletions: SERVER_CLEANUP.md.
