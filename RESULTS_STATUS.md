@@ -1,8 +1,9 @@
 # DR Severity Grading — Full Result Ledger, Compute Accounting, and Constraint Analysis
 
-**As of:** 2026-11-03 18:12 (cluster local time) — refreshed from live logs, `config_snapshot.yaml`
-files and `softlabels/` contents. A 13-job parallel wave (§4.1) is now in flight: 4 seed replicates
-running, the AASL pair gated on the fifth soft-label file (≈18:35), the rest queued.
+**As of:** 2026-11-03 18:30 (cluster local time) — refreshed from live logs, `config_snapshot.yaml`
+files and `softlabels/` contents. A parallel wave (§4.1) is in flight: 5 seed replicates running,
+`sl_p4` finished 18:17 (soft labels **5/5**), so the AASL pair is unblocked but **not yet submitted**;
+9 further wave arms still queued.
 **Scope:** every training run launched in `phase0_protocol … phase4_label_loss`, the SSL
 pretraining in detail, a paired-bootstrap re-analysis of the saved prediction arrays, an
 accounting of GPU-hours spent vs. remaining, and an explicit statement of what currently blocks
@@ -35,9 +36,17 @@ the *protocol* and what currently blocks the *novelty claims*.
 
 ## 1. Executive status in one screen
 
-**17 fine-tuning arms fully trained** (5 folds each = **85 fold checkpoints, ≈72 GB**),
+**19 fine-tuning arms fully trained** (5 folds each = **95 five-fold checkpoints** — 19 tag folders
+holding exactly five weights apiece; `checkpoints/` as a whole holds **136 `.pth` files / 118.6 GB**
+once the 11 pretraining weights, the 5 `sl_p4` outer models and the in-flight seed weights are counted),
 **4 pretraining runs** (2 × supervised-EyePACS, 1 × SSL, 1 × SSL→supervised),
-**3 jobs active right now** (`p4_emd`, `p4_coral`, `sl_p4`).
+**6 jobs active right now** (5 seed replicates of the §4.1 wave + `pre_ssl`). `sl_p4` **completed
+18:17:37** with all five soft-label files ⇒ `p4_aasl` / `p4_aasl_emd` are unblocked and **not yet
+submitted**.
+
+**GPU-hours spent, measured from log spans (§7.1): ≈190**, of which SSL is **62 %**. **Remaining if the
+plan is executed as written: ≈170** — or **≈90** if SSL stops now (saves 52 h) and phase 6 is pruned to
+4 cells (saves 27 h).
 
 | Phase | Content | Status | Arms | Official outcome | What the data says (§6) |
 |---|---|---|---|---|---|
@@ -47,13 +56,13 @@ the *protocol* and what currently blocks the *novelty claims*.
 | 2b | preprocessing parity | ✅ DONE | 3 | winner `p2b_none` (all three `ADOPT`) | a three-way tie |
 | 3a | pretraining (EyePACS-sup, SSL, SSL→sup) | ✅ DONE | 4 | **4× REJECT**, reference carried | sup **+0.043 EXT QWK (p<0.001)**; SSL **−0.030 EXT AUROC** |
 | 3b | joint APTOS+EyePACS fine-tune | ✅ DONE | 2 | **2× REJECT**, reference carried | **+0.104 EXT QWK [+0.080,+0.130]**, mild recall 0.10→0.33 |
-| 4 | EMD / CORAL / AASL soft labels | 🔄 2/5 done, generator running, 2 gated | 2/5 | `phase_select` pending | **`p4_coral` ΔOOF +0.0065 [+0.001,+0.012] — first arm to clear the gate** (§3.5b) |
-| — | **parallel wave**: seed replicates, SSL dose, joint dose, arch fork | 🔄 4/13 running | 4 | none — exploratory, own phase folders | retires C8 (image-only CIs); tests data-volume vs source-diversity (§4.1) |
+| 4 | EMD / CORAL / AASL soft labels | 🔄 2/5 trained, generator **done 5/5**, pair unblocked | 2/5 | `phase_select` pending | **`p4_coral` ΔOOF +0.0065 [+0.001,+0.012] — first arm to clear the gate** (§3.5b) |
+| — | **parallel wave**: seed replicates, SSL dose, joint dose, arch fork | 🔄 5 running, 10 to submit | 5 | none — exploratory, own phase folders | retires C8 (image-only CIs); tests data-volume vs source-diversity (§4.1) |
 | 5 | architecture + heterogeneous ensemble | ⏳ | 0/3 | — | — |
 | 6 | domain generalisation (amplitude mixing, MixStyle, UDA, dev-calibration) | ⏳ | 0/~9 | — | — |
 | 7 | feature-level class balance (optional) | ⏳ | 0/5 | — | — |
 | 8 | TTA / temperature / conformal / selective prediction | ⏳ | 0/6 | — | — |
-| 9 | winner + baseline, seeds 1,2 | ⏳ | 0/6 | — | the only place seed variance enters |
+| 9 | winner + baseline, seeds 1,2 | ⏳ | 0/6 | — | seed variance now also enters via §4.1 (and C10 blocks `seed_summary` from seeing it) |
 | 10 | XAI (Grad-CAM++/LayerCAM/EigenCAM + lesion overlay) | ⏳ | — | — | 88,702 masks on disk, unused by any metric |
 
 **The single most consequential fact in this document:** the adoption rule (adopt ⇔ paired-OOF
@@ -182,7 +191,7 @@ Pretraining runs themselves (from `logs/pre_*/` and `checkpoints/pretrain/`):
 |---|---|---|---|---|---|---|
 | `pre_eyepacs_sup` | EyePACS supervised | 15 planned, best at ep ~11 | 1e-4 | best **val QWK 0.7900** (EyePACS val, own scale) | 2.1 h | `checkpoints/pretrain/eyepacs_sup.pth` (kept as `eyepacs_sup_v1.pth`) |
 | `pre_eyepacs_sup_v2` | EyePACS supervised | 4 | 3e-5 | best **val QWK 0.7802** | 0.6 h | overwrote `eyepacs_sup.pth` |
-| `pre_ssl` | lesion-aware SSL | **63 / 100** (still running) | 1.5e-4, backbone ×0.1 | total loss 0.0139; **Contrastive ≡ 0.0000**, type 0.0028, count 0.0004, recon 0.0619 | **94 h so far** | `ssl_maxvit/ssl_backbone_epoch{40,50,60}.pth` + `ssl_pretrained_backbone.pth` (ep 60) + 3.5 GB resume ckpt |
+| `pre_ssl` | lesion-aware SSL | **67 / 100** (still running; ep 68 ≈19:31) | 1.5e-4, backbone ×0.1 | total loss 0.0136; **Contrastive ≡ 0.0000**, type 0.0024, count 0.0004, recon 0.0619 | **≈118 h so far** | `ssl_maxvit/ssl_backbone_epoch{40,50,60}.pth` + `ssl_pretrained_backbone.pth` (ep 60) + 3.5 GB resume ckpt |
 | `pre_ssl_sup` | SSL → supervised head | 4 | 3e-5 | best **val QWK 0.7729** | 0.6 h | `checkpoints/pretrain/ssl_sup.pth` |
 
 Downstream 5-fold fine-tunes of each backbone:
@@ -197,7 +206,7 @@ Downstream 5-fold fine-tunes of each backbone:
 Corrected against `checkpoints/<tag>/config_snapshot.yaml`: the arm with the larger external gain
 (`p3a_sup`, +0.043) is the one built on the **better and longer** pretrain (val QWK 0.7900, 15 epochs),
 and `p3a_ssl` was scored from the **epoch-50** checkpoint, so the SSL row measures 50 epochs of
-training — not the 63 it has now reached. Any seed re-run must reuse those exact paths
+training — not the 67 it has now reached. Any seed re-run must reuse those exact paths
 (`--inherit <tag>` already carries them).
 
 `WINNER.txt`: *“No in-phase arm met the adoption rule; the reference is carried forward unchanged.”*
@@ -286,18 +295,19 @@ seed 0", not "given the protocol".
 
 | Job | Folder | State | Detail |
 |---|---|---|---|
-| `p3c_joint_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 21/30** | started 17:09; a joint epoch costs ≈2× a plain one |
-| `p3c_coral_s1` | `phase3c_seeds` | 🔄 fold 1 **ep 8/30** | CORAL head (`loss=coral head_type=coral` inherited) + `seed=1` |
-| `p3c_none_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 4/30** | **the reference under seed 1** — the run every other Δ depends on |
-| `p3c_sup_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 4/30** | seed 1 of `p3a_sup`; `--inherit` carries `pretrain_path=eyepacs_sup_v1.pth` |
-| `sl_p4` | phase-4 gate | 🔄 outer 4, inner fold 3 **ep 7/15** | `outer0–3.npz` on disk ⇒ **5th file ≈18:35** |
-| `pre_ssl` | 3a tail | 🔄 **epoch 67/100** (17:58) | loss 0.0136, `Contrastive: 0.0000`; 33 epochs ⇒ **≈51 h** left |
+| `p3c_joint_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 24/30** | started 17:09; a joint epoch costs ≈2× a plain one |
+| `p3c_coral_s1` | `phase3c_seeds` | 🔄 fold 1 **ep 12/30** | CORAL head (`loss=coral head_type=coral` inherited) + `seed=1` |
+| `p3c_none_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 8/30** | **the reference under seed 1** — the run every other Δ depends on |
+| `p3c_sup_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 8/30** | seed 1 of `p3a_sup`; `--inherit` carries `pretrain_path=eyepacs_sup_v1.pth` |
+| `p3c_none_s2` | `phase3c_seeds` | 🔄 fold 0 **ep 5/30** | reference, seed 2 — started ≈18:05 |
+| `sl_p4` | phase-4 gate | ✅ **complete 18:17:37** (6.28 h) | `softlabels/sl_p4/outer0–4.npz` **all five written** ⇒ the AASL pair is unblocked |
+| `pre_ssl` | 3a tail | 🔄 **epoch 67/100** (17:58) | loss 0.0136, `Contrastive: 0.0000`; 1.57 h/epoch ⇒ **≈52 h** for the remaining 33 epochs |
 
 `p4_coral` finished 14:45 (2 h 31 m) and `p4_emd` 14:54 (2 h 43 m); their numbers are in §3.5b.
 **`results/phase4_label_loss/` holds the two completed arms and no `WINNER.txt` — correct, select has
 not been run and must not be until all five arms exist.**
 
-### 4.1 The parallel wave — 13 jobs, what each one buys
+### 4.1 The parallel wave — 15 arms (5 running, 10 to submit), what each one buys
 
 Every arm forks from an **already-finished** config via `--inherit <tag>` and lives in a **new** phase
 folder, so no closed phase's `phase_table.csv` / `WINNER.txt` is ever re-decided (constraint C7). None
@@ -305,14 +315,14 @@ of them touches `@phase4_label_loss`.
 
 | Tag | Phase folder | Inherit | `--set` | GPU h | Question | Status |
 |---|---|---|---|---|---|---|
-| `p3c_none_s1` / `_s2` | `phase3c_seeds` | `p2b_none` | `seed=1/2` | 2.6 ea | seed variance of the **reference** | 🔄 / ⏳ |
+| `p3c_none_s1` / `_s2` | `phase3c_seeds` | `p2b_none` | `seed=1/2` | 2.6 ea | seed variance of the **reference** | 🔄 / 🔄 |
 | `p3c_coral_s1` / `_s2` | `phase3c_seeds` | `p4_coral` | `seed=1/2` | 2.6 ea | does CORAL's +0.0065 survive a seed change | 🔄 / ⏳ |
 | `p3c_joint_s1` / `_s2` | `phase3c_seeds` | `p3b_joint` | `seed=1/2` | 4.7 ea | is the +0.10 EXT QWK gain joint training or seed 0 | 🔄 / ⏳ |
 | `p3c_sup_s1` / `_s2` | `phase3c_seeds` | `p3a_sup` | `seed=1/2` | 2.6 ea | best pretrain arm × seed | 🔄 / ⏳ |
-| `p3a_ssl60` | `phase3c_ssl` | `@phase2b_preprocess` | `pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch60.pth` | 2.8 | 2nd SSL dose point (50→60) **without** waiting 51 h for epoch 100 | ⏳ |
+| `p3a_ssl60` | `phase3c_ssl` | `@phase2b_preprocess` | `pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch60.pth` | 2.8 | 2nd SSL dose point (50→60) **without** waiting 52 h for epoch 100 | ⏳ |
 | `p3c_dose5k` / `p3c_dose2k` | `phase3c_dose` | `p3b_joint` | `eyepacs_max=5000` / `=2000` | 9.4 | **data volume or source diversity?** gain at 2k ⇒ diversity; scales with N ⇒ volume | ⏳ |
 | `p3c_cnext_ref` / `p3c_effnet_ref` | `phase3c_arch` | `p2b_none` | `backbone=convnextv2_large.fcmae_ft_in22k_in1k_384` / `efficientnetv2_rw_m.agc_in1k`, `pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false` | ≈7 | zoo comparability: are phase-1 zoo numbers comparable with fine-tuned arms | ⏳ |
-| `p4_aasl` / `p4_aasl_emd` | `phase4_label_loss` | `@phase3b_joint` | `soft_labels=aasl soft_label_run=sl_p4` (+ `loss=ce_emd lambda_emd=1.0`) | 5.2 | completes phase 4 ⇒ only then may select run | gated ≈18:35 |
+| `p4_aasl` / `p4_aasl_emd` | `phase4_label_loss` | `@phase3b_joint` | `soft_labels=aasl soft_label_run=sl_p4` (+ `loss=ce_emd lambda_emd=1.0`) | 5.2 | completes phase 4 ⇒ only then may select run | **READY — 5/5 soft labels at 18:17, not submitted** |
 
 **Reading of the wave.** The seed block is the priority: every Δ quoted anywhere in this ledger is a
 paired *image* bootstrap against one seed-0 reference, so until reference + contender each have ≥3
@@ -372,7 +382,8 @@ ssl_lesion_label_dir     datasets/EyePACS/lesion_labels (88,702 .npz)
   cannot be made from this checkpoint.
 * **Two-part timeline.** Run 1: 10-30 13:44 → 11-02 12:28, reached epoch 58/100 then hit the 72 h
   `shr_gpu` wall limit. Because SSL only writes a resumable checkpoint every **10 epochs**, the kill
-  cost ~8 epochs. Run 2 resumed from epoch 50 at 11-02 15:41 and is at epoch 63 now.
+  cost ~8 epochs. Run 2 resumed from epoch 50 at 11-02 15:41 and is at **epoch 67/100** (17:58 on
+  11-03), i.e. 1.57 h/epoch — so the 33 epochs still outstanding cost **≈52 GPU h**.
   **Cumulative SSL cost ≈ 94 GPU h; running to 100 costs ≈ 57 more.**
 * **Downstream effect of 94 GPU h** (vs the ImageNet-initialised reference `p2b_none`, paired
   bootstrap, §6): ΔOOF QWK **−0.006** [−0.013, +0.001]; ΔEXT QWK **+0.000** [−0.019, +0.020];
@@ -386,8 +397,8 @@ ssl_lesion_label_dir     datasets/EyePACS/lesion_labels (88,702 .npz)
 
 | Option | Cost | Consequence |
 |---|---|---|
-| **Stop SSL at epoch 60–70** and use `ssl_backbone_epoch60.pth` for `p3a_ssl100` | 0 h extra | “does more SSL help?” answered at one point on the curve instead of two |
-| Run SSL to 100 as planned | ≈57 GPU h | tests the *under-training* hypothesis; expected payoff low — the loss is saturated, not plateauing |
+| **Stop SSL now (epoch 67)** and use `ssl_backbone_epoch60.pth` for the dose arm | 0 h extra | **partly taken**: `p3a_ssl60` (§4.1) is the second point on the curve (ep 50 → ep 60) at 2.8 GPU h, so “does more SSL help?” is testable today rather than in 52 h |
+| Run SSL to 100 as planned | **≈52 GPU h** (33 epochs × 1.57 h) | tests the *under-training* hypothesis; expected payoff low — the loss is **saturated, not plateauing**, and `Contrastive` has been 0.0000 for 47 consecutive epochs. Since GPUs are not the binding constraint, running it out *and* running `p3a_ssl60` is the zero-regret choice; add `p3a_ssl100` for the pre-registered arm |
 | **Re-run SSL with `ssl_batch_size ≥ 256`** (grad-accum 32, or 4-way DDP) | ≈25–35 GPU h for 50 epochs | the only way the contrastive component becomes a real component; everything else stays as configured |
 | Keep as-is and report as a **pre-registered negative control** with the saturation analysis | 0 h | honest, cheap, and the analysis itself (15-negatives/anchor ⇒ κ(τ) degeneracy) is publishable content |
 
@@ -465,13 +476,14 @@ per-image probability arrays** (identical images and label vectors, verified ele
 | phase 2a | 8 | log span 47–51 h (queue + preemption Oct 27→29 inflate this; pure run ≈ 2.5–3 h, SAM ≈ 2×) | **≈ 26 GPU h** |
 | phase 2b | 3 | 2.3 / 2.8 / 2.8 h | **7.9 GPU h** |
 | `pre_eyepacs_sup`, `_v2` | 2 | 2.1 h, 0.6 h | **2.7 GPU h** |
-| `pre_ssl` (2 jobs, epoch 1 → 63) | 1 | 94.0 h | **94 GPU h** |
+| `pre_ssl` (run 1 epochs 1–58 over 93.5 h incl. preemption; run 2 resumed at ep 50 → ep 67 in 26.7 h) | 1 | 1.57 h/epoch measured on run 2 | **≈ 118 GPU h** (75 epoch-equivalents; **≈13 h wasted** replaying epochs 51–58 — the 3.5 GB resume ckpt is written only every 10 epochs, and run 1 died at ep 58 with ep 50 on disk) |
 | `pre_ssl_sup` | 1 | 0.6 h | **0.6 GPU h** |
 | phase 3a | 4 | 2.0–2.8 h | **10.2 GPU h** |
 | phase 3b | 2 | 4.7 h each | **9.4 GPU h** |
-| phase 4 (in flight) | 3 | 0.5–0.8 h so far | ≈ 0.5 h booked |
+| phase 4 | 3 | `p4_emd` 2.71 h, `p4_coral` 2.51 h, `sl_p4` 6.28 h (done 18:17:37) | **11.5 GPU h** |
+| §4.1 wave | 5 running | `p3c_joint_s1` 1.30, `p3c_coral_s1` 1.30, `p3c_none_s1` 0.39, `p3c_sup_s1` 0.39, `p3c_none_s2` 0.16 | **≈ 3.5 h booked**, ≈38 h booked in total |
 | phase 0 `detect_lesions` (88,702 masks) | 1 | not logged | unknown, order 10 h |
-| | | **Total ≈ 150 GPU h** | of which SSL = **63 %** |
+| | | **Total ≈ 190 GPU h** (≈200 incl. mask detection) | of which SSL = **62 %** |
 
 `summary.csv` has a `gpu_hours` column but it is not trustworthy: it reads 0.06–0.08 for every
 phase-2a arm because those summaries were regenerated by `tools/rebuild_oof.py`, which times only the
@@ -481,19 +493,22 @@ inference pass. Use the log spans above.
 
 | Phase | Arms still to run | GPU h |
 |---|---|---|
-| 4 | `p4_emd` (running), `p4_coral` (running), `sl_p4` (running), then `p4_aasl`, `p4_aasl_emd` | ≈ 25 total, ≈ 13 still to start |
-| — | SSL tail, if pushed to epoch 100 | **57** |
+| 4 | `p4_aasl`, `p4_aasl_emd` — **soft labels finished 5/5 at 18:17, nothing blocks these any more** | **5.4** |
+| §4.1 | 3 seeds still to submit (`p3c_coral_s2` 2.6, `p3c_sup_s2` 2.6, `p3c_joint_s2` 4.7), `p3a_ssl60` 2.8, `p3c_dose5k` + `p3c_dose2k` 9.4, `p3c_cnext_ref` + `p3c_effnet_ref` ≈7 | **≈ 29** |
+| — | SSL tail, if pushed to epoch 100 (33 epochs × 1.57 h) | **52** |
 | 5 | `p5_wghr`, `p5_convnextv2`, `p5_effnetv2` + `p5_hetero_ens` | ≈ 9 |
 | 6 | `p6_ref` + amplitude-mixing grid (2 stages × 3 β) + MixStyle + amp&MS + UDA + dev-calibration | ≈ 45 (**prunable to ≈ 18**) |
 | 7 | 5 feature-balance arms (optional) | ≈ 8 |
 | 8 | 6 inference-only tags (TTA ×4, temperature, conformal) | ≈ 2 |
-| 9 | winner s1,s2 + baseline s1,s2 (+2 inference tags) + `seed_summary` | ≈ 15 |
+| 9 | winner s1,s2 + baseline s1,s2 (+2 inference tags) + `seed_summary` — partly superseded by the §4.1 seeds, and still blocked by C10 | ≈ 15 |
 | 10 | XAI on the winner | ≈ 1 |
-| | **≈ 105 GPU h remaining** (≈ 60 with phase 6 pruned and SSL stopped at 60–70) | |
+| | **≈ 170 GPU h remaining** as written; **≈ 90** if SSL stops now (−52) and phase 6 is pruned to 4 cells (−27) | |
 
-At 4 concurrent single-GPU slots: ≈ 1–1.5 days wall clock for the plan as written, plus queue. The
-72 h per-job ceiling is not binding for a single arm (max 4.7 h) but it **did** kill `pre_ssl`
-mid-run once (§5.2). Nothing else in the remaining plan approaches it.
+At 4 concurrent single-GPU slots the remaining plan is ≈ 43 h of pure wall clock (≈ 1.8 days with
+queue); the §4.1 wave's ≈ 38 h fits inside a single day once ≥6 slots are free, which is exactly why it
+was submitted as a wave rather than sequenced. The 72 h per-job ceiling is not binding for a single arm
+(max 4.7 h) but it **did** kill `pre_ssl` mid-run once (§5.2). Nothing else in the remaining plan
+approaches it.
 
 ---
 
@@ -610,18 +625,29 @@ arms (§4.1 `p3c_*_ref`) and state the assumption it rests on.
 
 ## 9. Constraints on the novelties (scientific-claim level)
 
-**N1 — EMD loss / CORAL head / ordinal smoothing: effect below the noise floor, by design.**
+**N1 — EMD loss / ordinal smoothing: below the noise floor. CORAL: the one exception found so far.**
+*Status 18:30:* both trained arms are in (§3.5b) and `phase_select` has not been run, so the *official*
+phase-4 answer is still open — but the data already splits this claim in two. **EMD is a null** (ΔOOF
+−0.0001, ΔDEV −0.036, mild recall 0.104 → 0.066: it flattens the ordinal distribution rather than
+sharpening it). **CORAL is the first arm in the project with `ci_lo > 0`**: ΔOOF **+0.0065
+[+0.0012, +0.0121]**, P(Δ≤0)=0.006, and the only arm of 19 positive on OOF, DEV, EXT QWK and binary
+AUROC simultaneously. What keeps it short of a headline is C8 (image-only CI against a seed-0 reference)
+and the small external n — **not** the in-domain result. If select records ADOPT, restate N1 as
+*ordinal-structure objectives do not move a near-ceiling in-domain endpoint, except the one that changes
+the head*; per C11 adopting CORAL also excludes AASL, making phase 4 a head-**branch** choice.
 The plan itself says “expect ~0–1 point; null results are reported”. One QWK point is ~140× the 0.007
 resolution of the gate, and the observed spread of *all* phase-2a loss factors was ≤ 0.01. These arms
 can only ever be reported as null-or-equivalence unless the endpoint changes (C1). Two mechanical
 restrictions compound it: `config.py` forbids `head_type=coral` together with `soft_labels != none`, so
 the CORAL × AASL cell **cannot be crossed** — the two ordinal novelties are mutually exclusive by
-construction, which undercuts any claim that ordinal structure per se is what matters; and the running
-CORAL arm already shows its classic failure mode (fold 0: train acc 98.8 % vs val acc 84.9 %, best val
-QWK 0.938 around epoch 18 then flat) — the ordinal head adds capacity, not transfer.
+construction, which undercuts any claim that ordinal structure per se is what matters; and the CORAL arm
+shows its classic over-fitting signature (fold 0: train acc 98.8 % vs val acc 84.9 %, best val
+QWK 0.938 around epoch 18 then flat) — the ordinal head adds capacity, not transfer, which is exactly why
+its +0.0065 needs the §4.1 seed replicates before it is called an effect rather than a lucky draw.
 
 **N2 — AASL soft labels: the procedure is the contribution, the gain probably is not.**
-The nested cross-fitted generation (5 outer × 4 inner = 20 leakage-free 15-epoch fits, ≈ 6.5 GPU h) is
+The nested cross-fitted generation (5 outer × 4 inner = 20 leakage-free 15-epoch fits, **measured
+6.28 GPU h**, complete 18:17:37) is
 better practice than self-generated soft labels and is the most defensible methods contribution in the
 project. But its expected QWK effect is ≤ 0.005, and its *intended* benefit — calibrated ambiguity on
 ordinal boundaries — is invisible in the current metric set: class 1 has only 340 images in the OOF
@@ -684,10 +710,17 @@ lesion-grounded, not colour-statistics-grounded” analysis that N4 says is miss
 
 ---
 
-## 10. Decision points (nothing below is started — this is a menu, priced)
+## 10. Decision points — partly overtaken by events (wave in flight, §4.1); the rest is a priced menu
 
-**Option A — finish the plan exactly as written.** ≈ 105 GPU h. Deliverable: a 30-row ablation table
-where nothing beats an ImageNet-1k MaxViT-L, one external dataset, one seed. Honest venue: Q2
+*Started since this menu was written:* the seed programme (Option B step 4) is **running** as
+`phase3c_seeds` (`p2b_none`, `p3a_sup`, `p3b_joint`, `p4_coral` × seeds 1–2), the SSL dose decision
+(step 3) is **being tested** by `p3a_ssl60`, and the architecture-comparability question is **forked**
+onto the reference as `p3c_cnext_ref` / `p3c_effnet_ref` rather than waiting for the phase-4 winner.
+Option B steps 1, 2, 5 and 6 are **not** started.
+
+**Option A — finish the plan exactly as written.** ≈ 170 GPU h (§7.2). Deliverable: a 30-row ablation table
+where nothing beats an ImageNet-1k MaxViT-L, one external dataset, and now 2–3 seeds for four configs
+instead of one (§4.1). Honest venue: Q2
 (*Computers in Biology and Medicine*, *Artificial Intelligence in Medicine*, *TVST*, *Eye*) or a
 MICCAI/IPMI workshop. Cost of this path: the 0.10 QWK result stays buried in a `REJECT` row.
 
@@ -698,9 +731,13 @@ MICCAI/IPMI workshop. Cost of this path: the 0.10 QWK result stays buried in a `
 2. Re-issue the phase-3b decision under the amended endpoint and re-point the chain to `p3b_joint`
    **before** launching phase 5. Re-run the three phase-4 arms already trained on the new parent
    (≈ 8 GPU h) so the lineage is single-valued.
-3. Stop SSL at epoch 60–70 (saves ≈ 50 GPU h) and re-file it as a negative control (§5.3).
-4. Spend the freed compute on **seeds**, not arms: 5 seeds × {`p2b_none`, `p3a_sup`, `p3b_joint`,
-   best phase-4 arm} ≈ 60 GPU h, with seed as the unit of analysis.
+3. ~~Stop SSL at epoch 60–70~~ → **under test**: `p3a_ssl60` (§4.1) measures the 50→60 dose response
+   today; stopping the run now saves the remaining **52 GPU h** and re-files SSL as a negative control
+   (§5.3).
+4. Spend the freed compute on **seeds**, not arms — **started**: 2 seeds × {`p2b_none`, `p3a_sup`,
+   `p3b_joint`, `p4_coral`} are running as §4.1 (≈20 GPU h). Extend to 5 seeds × {reference, best
+   phase-4 arm} ≈ 60 GPU h, with **seed as the unit of analysis**, and fix C10 so `seed_summary` can
+   actually see them.
 5. Prune phase 6 to 4 cells: `(no-DG)`, `amp@best-stage`, `mixstyle`, `amp+mixstyle`, all with
    `winner_eligible=false`, plus the two separability cells from N5.
 6. Start the second external dataset **today** (C3) — it is the only item whose lead time exceeds the
@@ -727,6 +764,14 @@ endpoint alone.
 | Option B + Option C (mechanism + novelty) + 2 sites | *TMI*, *Medical Image Analysis*, *npj Digital Medicine*, *Radiology: AI* |
 | + reader study / prospective or multi-centre clinical data | top-tier without further method novelty |
 
+*Update 18:30 — does `p4_coral` move this table? No, and it is worth being explicit about why.* It is the
+first arm to clear the pre-registered gate, which is evidence that **the protocol can detect a real
+effect at all** — that is what makes the surrounding 19 nulls informative rather than merely empty. But a
++0.0065 QWK gain on a near-ceiling in-domain endpoint, measured with an image-only CI against one
+seed-0 reference (C1/C8), is not a venue-moving result and must not be presented as one. The rows above
+are gated by the *external* items — second site, endpoint amendment, seed-level inference — and none of
+those changed today.
+
 ---
 
 ## 11. Appendix
@@ -736,7 +781,11 @@ endpoint alone.
 `results/master/` (`master_table.csv/.tex`, `master_deltas.csv` — **currently stale: built before
 phase 3b**) · `checkpoints/<tag>/{foldK.pth,config_snapshot.yaml}` ·
 `checkpoints/pretrain/{eyepacs_sup.pth,eyepacs_sup_v1.pth,ssl_sup.pth,ssl_maxvit/}` ·
-`softlabels/sl_p4/outer<k>.npz` (pending) · `logs/<tag>/*.log` (per-fold detail) ·
+`softlabels/sl_p4/outer{0..4}.npz` (**all five complete**, generated 12:00→18:17:37, 6.28 GPU h) ·
+`backups/proto_20261103_1723_pre_phase4select.tgz` (3.28 GB protocol snapshot: `results/` + every
+`config_snapshot.yaml`; use `--exclude='results/baselines/*/*.pth'` for the ≈100 MB recurring copies, C7) ·
+`results/phase3c_{seeds,ssl,dose,arch}/` (the §4.1 exploratory wave — deliberately outside the
+pre-registered phases) · `logs/<tag>/*.log` (per-fold detail) ·
 `outputs/<phase>/<tag>.txt` (scheduler stdout, archived).
 
 **B. Reproduce every number in §6** (read-only, ~20 s):
