@@ -1,6 +1,8 @@
 # DR Severity Grading — Full Result Ledger, Compute Accounting, and Constraint Analysis
 
-**As of:** 2026-11-03 12:48 (cluster local time)
+**As of:** 2026-11-03 18:12 (cluster local time) — refreshed from live logs, `config_snapshot.yaml`
+files and `softlabels/` contents. A 13-job parallel wave (§4.1) is now in flight: 4 seed replicates
+running, the AASL pair gated on the fifth soft-label file (≈18:35), the rest queued.
 **Scope:** every training run launched in `phase0_protocol … phase4_label_loss`, the SSL
 pretraining in detail, a paired-bootstrap re-analysis of the saved prediction arrays, an
 accounting of GPU-hours spent vs. remaining, and an explicit statement of what currently blocks
@@ -45,7 +47,8 @@ the *protocol* and what currently blocks the *novelty claims*.
 | 2b | preprocessing parity | ✅ DONE | 3 | winner `p2b_none` (all three `ADOPT`) | a three-way tie |
 | 3a | pretraining (EyePACS-sup, SSL, SSL→sup) | ✅ DONE | 4 | **4× REJECT**, reference carried | sup **+0.043 EXT QWK (p<0.001)**; SSL **−0.030 EXT AUROC** |
 | 3b | joint APTOS+EyePACS fine-tune | ✅ DONE | 2 | **2× REJECT**, reference carried | **+0.104 EXT QWK [+0.080,+0.130]**, mild recall 0.10→0.33 |
-| 4 | EMD / CORAL / AASL soft labels | 🔄 **RUNNING** | 2/5 training, 2 gated | — | unknown; expected ≤1 pt (§9) |
+| 4 | EMD / CORAL / AASL soft labels | 🔄 2/5 done, generator running, 2 gated | 2/5 | `phase_select` pending | **`p4_coral` ΔOOF +0.0065 [+0.001,+0.012] — first arm to clear the gate** (§3.5b) |
+| — | **parallel wave**: seed replicates, SSL dose, joint dose, arch fork | 🔄 4/13 running | 4 | none — exploratory, own phase folders | retires C8 (image-only CIs); tests data-volume vs source-diversity (§4.1) |
 | 5 | architecture + heterogeneous ensemble | ⏳ | 0/3 | — | — |
 | 6 | domain generalisation (amplitude mixing, MixStyle, UDA, dev-calibration) | ⏳ | 0/~9 | — | — |
 | 7 | feature-level class balance (optional) | ⏳ | 0/5 | — | — |
@@ -186,10 +189,16 @@ Downstream 5-fold fine-tunes of each backbone:
 
 | Arm | initialisation | OOF QWK | OOF AUROC | test QWK | DEV QWK | DEV mild | EXT QWK | EXT AUROC | EXT mild | noDR% | ECE ext | decision |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `p3a_sup` | `eyepacs_sup.pth` (v2) | 0.93 | 0.98 | 0.92 | **0.70** | **0.33** | **0.74** | **0.95** | **0.28** | 68.2 | 0.15 | REJECT |
-| `p3a_sup_v2` | same, lr 3e-5 variant | 0.93 | 0.98 | 0.93 | 0.70 | 0.19 | 0.72 | 0.94 | 0.18 | 72.3 | 0.18 | REJECT |
-| `p3a_sslsup` | `ssl_sup.pth` (SSL ep-50 → 4 sup epochs) | 0.92 | 0.98 | 0.92 | 0.65 | 0.14 | 0.73 | 0.94 | 0.16 | 72.3 | **0.13** | REJECT |
-| `p3a_ssl` | `ssl_pretrained_backbone.pth` (ep ~58) | 0.92 | 0.98 | 0.92 | 0.64 | 0.12 | 0.70 | 0.93 | 0.07 | 75.5 | 0.18 | REJECT |
+| `p3a_sup` | `eyepacs_sup_v1.pth` — the **15-epoch** pretrain, val QWK 0.7900 | 0.93 | 0.98 | 0.92 | **0.70** | **0.33** | **0.74** | **0.95** | **0.28** | 68.2 | 0.15 | REJECT |
+| `p3a_sup_v2` | `eyepacs_sup.pth` — the **4-epoch / lr 3e-5** pretrain, val QWK 0.7802 | 0.93 | 0.98 | 0.93 | 0.70 | 0.19 | 0.72 | 0.94 | 0.18 | 72.3 | 0.18 | REJECT |
+| `p3a_sslsup` | `ssl_sup.pth` (SSL ep-50 → 4 supervised epochs) | 0.92 | 0.98 | 0.92 | 0.65 | 0.14 | 0.73 | 0.94 | 0.16 | 72.3 | **0.13** | REJECT |
+| `p3a_ssl` | `ssl_maxvit/ssl_backbone_epoch50.pth` (**epoch 50, not 60/100**) | 0.92 | 0.98 | 0.92 | 0.64 | 0.12 | 0.70 | 0.93 | 0.07 | 75.5 | 0.18 | REJECT |
+
+Corrected against `checkpoints/<tag>/config_snapshot.yaml`: the arm with the larger external gain
+(`p3a_sup`, +0.043) is the one built on the **better and longer** pretrain (val QWK 0.7900, 15 epochs),
+and `p3a_ssl` was scored from the **epoch-50** checkpoint, so the SSL row measures 50 epochs of
+training — not the 63 it has now reached. Any seed re-run must reuse those exact paths
+(`--inherit <tag>` already carries them).
 
 `WINNER.txt`: *“No in-phase arm met the adoption rule; the reference is carried forward unchanged.”*
 The plan's own kill-criterion (“if SSL does not beat EyePACS-supervised on DEV and OOF, report *no
@@ -204,6 +213,57 @@ added value*”) **fires**: supervised beats SSL on DEV 0.70 vs 0.64 and on EXT 
 
 Same verdict sentence: reference carried forward. Both runs cost **4.7 GPU h each** (a joint epoch is
 ~2× a plain epoch because half of each batch is drawn from 20,000 extra images).
+
+### 3.5b Phase 4 — label/loss arms completed so far (2 of 5, `phase_select` **not yet run**)
+
+Finished on 2026-11-03: `p4_coral` at 14:45 (2 h 31 m) and `p4_emd` at 14:54 (2 h 43 m).
+
+| Arm | OOF QWK | ΔOOF (paired bootstrap, 95 % CI) | DEV QWK | ΔDEV | EXT QWK | ΔEXT | EXT AUROC | mild ext | ECE ext |
+|---|---|---|---|---|---|---|---|---|---|
+| `p2b_none` (ref) | 0.9262 | — | 0.6629 | — | 0.6982 | — | 0.8556 | 0.104 | 0.20 |
+| **`p4_coral`** | **0.9327** | **+0.0065 [+0.0012, +0.0121]**, P(d≤0)=0.006 | **0.6921** | +0.0293 [−0.011, +0.069] | **0.7158** | +0.0176 [−0.001, +0.037] | 0.8639 | 0.137 | 0.19 |
+| `p4_emd` | 0.9261 | −0.0001 [−0.0059, +0.0058] | 0.6271 | −0.0358 [−0.089, +0.005] | 0.6994 | +0.0012 [−0.018, +0.023] | 0.8548 | 0.066 | 0.20 |
+
+* **`p4_coral` is the first arm in the whole project whose pre-registered gate is satisfied**: the
+  paired-OOF ΔQWK CI excludes 0 (+0.0065, P(d≤0)=0.006), and it is the only arm whose direction is
+  positive on *all three* endpoints simultaneously (OOF +0.007, DEV +0.029, EXT +0.018, AUROC +0.008).
+  It is still a ~2×-noise-floor effect, i.e. a small real gain, not a headline.
+  Caveat: this is *my* bootstrap, not `phase_select`'s resampler — the official
+  `--mode phase_select --phase phase4_label_loss --reference @phase3b_joint --design parallel` must be
+  run over all five arms before `ADOPT`/`WINNER.txt` is quoted.
+* `p4_emd` is a clean null in-domain (−0.0001) and directionally negative on DEV (−0.036, CI ∋ 0),
+  with mild recall *dropping* to 0.066 — EMD appears to flatten the ordinal distribution rather than
+  sharpen it.
+
+**Footgun found while checking the soft-label gate — `src/training/trainer.py:198-207`.** If
+`softlabels/<run>/outer<k>.npz` for the current fold does not exist, the `if os.path.isfile(sl_path)`
+guard leaves `soft_dict = None` and training **silently continues with plain CE** — no exception, no
+warning line. Launching `p4_aasl` or `p4_aasl_emd` before all five `outer0..4.npz` files exist therefore
+produces a hybrid CE/AASL arm that is labelled as AASL in every artefact. Hard rule: wait for
+`ls softlabels/sl_p4/outer*.npz | wc -l` to print **5**, and afterwards confirm five
+`Loaded … AASL soft labels for fold k` lines in the run log.
+
+**The adoption gate as actually implemented** (`src/evaluation/tables.py:279`, after the phase-specific
+branches at 260–276): a parallel arm is `ADOPT` iff **`ci_lo > 0` AND `d_bin_auroc ≥ −0.005` AND
+`d_oof_qwk ≥ −0.005`**; otherwise `REJECT` (`TENTATIVE` is permitted only for the a-priori
+regularisation items of phase 2a). Against the reference `p2b_none`:
+
+| Arm | `ci_lo` | clause 1 | `d_bin_auroc` | clause 2 | `d_oof_qwk` | clause 3 | Expected decision |
+|---|---|---|---|---|---|---|---|
+| `p4_coral` | **+0.0012** | ✅ | +0.0083 | ✅ | +0.0065 | ✅ | **ADOPT** |
+| `p4_emd` | −0.0059 | ❌ | −0.0008 | ✅ | −0.0001 | ✅ | REJECT (fails only clause 1) |
+
+Phase-specific rules differ and must not be conflated: **phase 6** adopts on `d_extdev_qwk > 0` with an
+OOF drop tolerance of 0.005 (line 262), and **phase 2b** on a joint DEV rule requiring
+`d_extdev_qwk_ci_lo > 0`, `d_extdev_qwk > 0.05`, `d_extdev_mild_ci_lo > 0` plus both guards (271–273).
+Winner = argmax over `{REFERENCE} ∪ {ADOPT/TENTATIVE with winner_eligible}` with ties broken on
+`extdev_qwk` (288–300); if every in-phase arm is REJECTed and the reference lives in another phase, the
+reference is carried forward. `resolve()` raises `FileNotFoundError` when `@phaseX` has no `WINNER.txt`,
+so a half-decided parent blocks later phases loudly rather than silently.
+
+**Interpretation limit (see C8):** `ci_lo` above is a *paired image-resampling* CI computed against the
+single seed-0 reference checkpoint. It contains **no seed variance**, so `P(Δ≤0)=0.006` means "given
+seed 0", not "given the protocol".
 
 ### 3.6 Cross-cutting observations that no single table shows
 
@@ -222,22 +282,67 @@ Same verdict sentence: reference carried forward. Both runs cost **4.7 GPU h eac
 
 ---
 
-## 4. What is running at this minute (2026-11-03 12:48)
+## 4. What is running — refreshed 2026-11-03 18:12
 
-Three jobs are writing logs whose last line is < 2 min old; a fourth (SSL) is alive but silent
-because it prints once per epoch.
+| Job | Folder | State | Detail |
+|---|---|---|---|
+| `p3c_joint_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 21/30** | started 17:09; a joint epoch costs ≈2× a plain one |
+| `p3c_coral_s1` | `phase3c_seeds` | 🔄 fold 1 **ep 8/30** | CORAL head (`loss=coral head_type=coral` inherited) + `seed=1` |
+| `p3c_none_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 4/30** | **the reference under seed 1** — the run every other Δ depends on |
+| `p3c_sup_s1` | `phase3c_seeds` | 🔄 fold 0 **ep 4/30** | seed 1 of `p3a_sup`; `--inherit` carries `pretrain_path=eyepacs_sup_v1.pth` |
+| `sl_p4` | phase-4 gate | 🔄 outer 4, inner fold 3 **ep 7/15** | `outer0–3.npz` on disk ⇒ **5th file ≈18:35** |
+| `pre_ssl` | 3a tail | 🔄 **epoch 67/100** (17:58) | loss 0.0136, `Contrastive: 0.0000`; 33 epochs ⇒ **≈51 h** left |
 
-| Job | Tag | Started | Progress at 12:48 | Rate | ETA |
-|---|---|---|---|---|---|
-| `p4_emd` (EMD loss) | phase 4 | 12:11:30 | fold 0 **done** (early-stopped ep 14, val QWK best recorded), fold 1 at ep 5/30 | ~1.6–1.7 min/epoch | fold 0 took 27 min ⇒ **~2.2–2.5 h total, ≈14:30** |
-| `p4_coral` (CORAL head) | phase 4 | 12:14:41 (2nd submission — the first died on a malformed `--set`) | fold 0 at ep 20/30, best val QWK 0.938 | 1.6 min/epoch | ~48 min/fold ⇒ **~4 h, ≈16:15** |
-| `sl_p4` (AASL soft labels) | phase 4 | 12:00:53 | inner fit “Fold 2”, ep 6/15 | 1.3 min/epoch | 20 inner fits × 15 ep = 300 epochs ⇒ **≈6.5 h, ≈18:30** |
-| `pre_ssl` (SSL pretraining) | phase 3a tail | resumed 11-02 15:41 | **epoch 63/100** (logged 11:44) | 93 min/epoch | 37 epochs left ⇒ **≈57 GPU h more** if allowed to finish |
+`p4_coral` finished 14:45 (2 h 31 m) and `p4_emd` 14:54 (2 h 43 m); their numbers are in §3.5b.
+**`results/phase4_label_loss/` holds the two completed arms and no `WINNER.txt` — correct, select has
+not been run and must not be until all five arms exist.**
 
-Gate for the remaining two phase-4 arms: `softlabels/sl_p4/outer<k>.npz` does **not exist yet**
-(`ls softlabels/sl_p4 | wc -l` = 0), so `p4_aasl` and `p4_aasl_emd` are correctly not submitted.
-`checkpoints/sl_p4/inner/` holds the in-progress inner models; nothing is lost if the job dies
-between outer folds.
+### 4.1 The parallel wave — 13 jobs, what each one buys
+
+Every arm forks from an **already-finished** config via `--inherit <tag>` and lives in a **new** phase
+folder, so no closed phase's `phase_table.csv` / `WINNER.txt` is ever re-decided (constraint C7). None
+of them touches `@phase4_label_loss`.
+
+| Tag | Phase folder | Inherit | `--set` | GPU h | Question | Status |
+|---|---|---|---|---|---|---|
+| `p3c_none_s1` / `_s2` | `phase3c_seeds` | `p2b_none` | `seed=1/2` | 2.6 ea | seed variance of the **reference** | 🔄 / ⏳ |
+| `p3c_coral_s1` / `_s2` | `phase3c_seeds` | `p4_coral` | `seed=1/2` | 2.6 ea | does CORAL's +0.0065 survive a seed change | 🔄 / ⏳ |
+| `p3c_joint_s1` / `_s2` | `phase3c_seeds` | `p3b_joint` | `seed=1/2` | 4.7 ea | is the +0.10 EXT QWK gain joint training or seed 0 | 🔄 / ⏳ |
+| `p3c_sup_s1` / `_s2` | `phase3c_seeds` | `p3a_sup` | `seed=1/2` | 2.6 ea | best pretrain arm × seed | 🔄 / ⏳ |
+| `p3a_ssl60` | `phase3c_ssl` | `@phase2b_preprocess` | `pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch60.pth` | 2.8 | 2nd SSL dose point (50→60) **without** waiting 51 h for epoch 100 | ⏳ |
+| `p3c_dose5k` / `p3c_dose2k` | `phase3c_dose` | `p3b_joint` | `eyepacs_max=5000` / `=2000` | 9.4 | **data volume or source diversity?** gain at 2k ⇒ diversity; scales with N ⇒ volume | ⏳ |
+| `p3c_cnext_ref` / `p3c_effnet_ref` | `phase3c_arch` | `p2b_none` | `backbone=convnextv2_large.fcmae_ft_in22k_in1k_384` / `efficientnetv2_rw_m.agc_in1k`, `pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false` | ≈7 | zoo comparability: are phase-1 zoo numbers comparable with fine-tuned arms | ⏳ |
+| `p4_aasl` / `p4_aasl_emd` | `phase4_label_loss` | `@phase3b_joint` | `soft_labels=aasl soft_label_run=sl_p4` (+ `loss=ce_emd lambda_emd=1.0`) | 5.2 | completes phase 4 ⇒ only then may select run | gated ≈18:35 |
+
+**Reading of the wave.** The seed block is the priority: every Δ quoted anywhere in this ledger is a
+paired *image* bootstrap against one seed-0 reference, so until reference + contender each have ≥3
+seeds, no effect below ≈0.01 QWK is protocol-level (C8). The `eyepacs_max` pair replaces the withdrawn
+equal-quantity control (C9) and is the cheapest test of *why* joint training helps, which is the
+mechanism the novelty claim rests on. The two `_ref` arms are a lineage **fork**, deliberately not the
+pre-registered `p5_*` arms.
+
+**Caveats recorded at launch time.**
+* `p3a_ssl60`, `p3c_dose*` and `p3c_*_ref` are **exploratory**, not pre-registered; the pre-registered
+  `p5_convnextv2` / `p5_effnetv2` / `p3a_ssl100` still have to be run against the phase-4 winner.
+* Both architecture ids are present in `~/.cache/huggingface/hub` and are the **same timm ids the
+  phase-1 zoo used**, so `HF_HUB_OFFLINE=1` is safe and the comparability intent holds. The residual
+  risk is compute only: `img_size` stays 512 for a `_384` model (≈1.8× FLOPs) — on OOM, resubmit that
+  single arm with `img_size=384`.
+* Post-launch check that actually catches silent failures: dump the override keys from each new
+  `checkpoints/<tag>/config_snapshot.yaml` and confirm `seed`, `eyepacs_max`, `backbone`,
+  `pretrain_path` differ from the parent (C9 — `--set` never errors on an unknown key).
+* After each AASL run, `grep -c "AASL soft labels for fold" <log>` must print **5**.
+* Protocol snapshot taken 17:25: `backups/proto_20261103_1723_pre_phase4select.tgz` (3.28 GB, of which
+  97 % is the seven zoo `.pth` files inside `results/baselines/`; recurring snapshots should add
+  `--exclude='results/baselines/*/*.pth'` ⇒ ≈100 MB). Disk 183 GB free of 1.1 TB (83 % used).
+
+<details><summary>Earlier snapshot (12:48) — kept for the record</summary>
+
+At 12:48 all three phase-4 jobs were still mid-run: `p4_emd` fold 1 ep 5/30, `p4_coral` fold 0 ep 20/30,
+`sl_p4` inner fit “Fold 2” ep 6/15, with observed rates 1.6–1.7 min/epoch (fine-tunes) and 1.3
+min/epoch (inner fits) — which is what predicted the 14:45/14:54 completions and the ≈18:30 soft-label ETA.
+
+</details>
 
 ---
 
@@ -407,7 +512,7 @@ nulls as **equivalence** results (TOST, margin 0.01) with a power statement. Bec
 pre-specified rule it must be written down *before* phase-5 results are read, and the phase-3b
 decision re-issued as “endpoint amended, original endpoint reported alongside”.
 
-**C2 — No model-level variance.** *Severity: blocking for any positive claim.*
+**C2 — No model-level variance.** *(being retired now — quantified in C8, seed block of §4.1 in flight)* *Severity: blocking for any positive claim.*
 All 17 arms are single runs at `seed 0`; every CI quoted anywhere is over images, not over training.
 Seeds appear only in phase 9, and only for the winner and the plain baseline — the two configurations
 whose difference is already known to be ≈ 0. *Fix:* ≥3 (ideally 5) seeds for the 3–4 headline
@@ -457,6 +562,49 @@ died once this way); thresholds and the temperature are fitted on the OOF pool, 
 `phase_select` after adding an arm can flip another arm's decision. *Fix:* tarball `results/` +
 `config_snapshot.yaml` after every phase; snapshot pretrain outputs before re-running; never hand-write
 `WINNER.txt`.
+
+**C8 — Adoption CIs contain no seed variance.** *Severity: high (interpretation).*
+Every `Δ`/`CI` column in `phase_table.csv` is a paired bootstrap **over images** of one checkpoint per
+fold, computed against the **single seed-0 reference checkpoint**. It therefore measures image-sampling
+noise only, and seed noise in the reference propagates into *every* arm's Δ in the same direction.
+`p4_coral`'s `P(Δ≤0)=0.006` means "given seed 0", not "given the protocol"; its CI lower bound
+(+0.0012) is a fifth of the point estimate. Until reference and contender each have ≥3 seeds, treat any
+|Δ| < 0.01 QWK as provisional. The seed block of §4.1 exists precisely to retire this constraint.
+
+**C9 — `--set` accepts unknown keys silently.** *Severity: high (operational).*
+`parse_set` (`src/utils/config.py:9-21`) is `yaml.safe_load` on the value — correct casting for
+`true/false/null/numbers`, but **no key whitelist**: `validate_cfg` asserts only ~6 fields
+(`amp_mix`×`preproc`, `mixstyle`×backbone, `head_type=coral`×`soft_labels`, `uda_style_pool`, `tta`,
+`recalibrate`, `pretrained_fallback`, `xai_*`). A control written with a non-existent key therefore
+trains an exact copy of the parent and is labelled as the control. Recorded near-miss: an
+"equal-quantity augmentation" control drafted as `--set aptos_aug_multiplier=6` — **no such key
+exists** (real knobs: `aug`, `alpha_max`, `amp_beta_max`, `mixstyle`, `eyepacs_max`, `joint_w`,
+`preproc`, `uda_style_pool`); withdrawn before submission. Corollary: the pre-registered equal-quantity
+in-domain control is **not expressible** with existing keys — the labelled APTOS pool is 3,296 images,
+so "20k extra in-domain images" needs a new `aptos_repeat` knob (duplication + fresh augmentation).
+`eyepacs_max` dose-response (§4.1) is the substitute. **Rule: after every submission, dump the override
+keys from `checkpoints/<tag>/config_snapshot.yaml` and confirm they differ from the parent.**
+
+**C10 — `seed_summary` is hard-coded to phase-9 tag names.** *Severity: medium (tooling).*
+`tables.py:530` groups only tags starting `p9_final_s` / `p9_base_s` (default phase `phase9_final`) and
+returns silently otherwise, so the seed replicates kept in `phase3c_seeds` are **invisible** to
+`--mode seed_summary` and `results/master/seed_variance.csv` will not reflect them. Either patch those
+two prefixes to group by stripping `_s\d+$`, or aggregate `results/phase3c_seeds/*/summary.csv` directly.
+
+**C11 — CORAL and AASL are mutually exclusive by the validator.** *Severity: medium (design).*
+`validate_cfg` asserts `not (head_type == 'coral' and soft_labels != 'none')`. Two consequences: phase 4
+compares arms that use **different heads** (CORAL vs softmax), so its winner-selection is a head
+*branch* choice as much as a loss choice; and if CORAL is adopted, the obvious follow-up — AASL soft
+labels on top of the adopted config — is **illegal as written**. Either justify the assertion (CORAL
+learns cumulative-threshold targets, which do not compose with a soft target distribution) and state
+that the two novelties are alternative branches, or relax it and add a CORAL+AASL arm.
+
+**C12 — the zoo baselines have no recorded configuration.** *Severity: medium (provenance).*
+`results/phase1_zoo/<NAME>/` contains **only** `summary.csv`; there is no `config_snapshot.yaml` for any
+zoo or `results/baselines/` arm, so the `img_size` / recipe behind the zoo numbers is unrecoverable from
+artefacts (the weights themselves survive only in the 17:25 backup tarball). Any
+"zoo baseline vs fine-tuned arm" comparability claim must therefore pin `img_size` explicitly in the new
+arms (§4.1 `p3c_*_ref`) and state the assumption it rests on.
 
 ---
 
