@@ -366,3 +366,45 @@ FAILED tests/test_selection_fallbacks.py::test_all_rejected_with_cross_phase_ref
 FAILED tests/test_selection_fallbacks.py::test_phase2b_joint_rule_adopts_external_gain - FileNotFoundError: phase_select phase2b_preprocess: DEV predictions missing for ['p2b_pad:ddr', 'p2b_base:ddr', 'p2b_pad:deepdrid', 'p2b_base:deepdrid', 'p2b_pad:idrid', 'p2b_base:idrid']. Run ...
 FAILED tests/test_zz_guard_check.py::test_guard_blocks_rmtree_inside_real_results - AssertionError: the conftest guard did not block a protected rmtree
 3 failed, 72 passed, 430 warnings in 562.12s (0:09:22)
+
+Is this the possible cause and solution for it?
+`
+
+**Nothing broke in your real data.** I checked `results/` — no test junk left, no real file touched. All 3 failures are *outdated test files* vs the *new* code. The warnings (albumentations/matplotlib) are noise.
+
+### Why they fail
+
+**1) `test_selection_fallbacks.py` (2 failures)**
+The new `phase_select` scores on **4** DEV sets (Messidor, DDR, DeepDRiD, IDRiD) and refuses to run if any DEV prediction file is missing (`src/evaluation/tables.py:296-302`). These two old tests only create **one** fake DEV file (`predictions_external_dev.npz` = Messidor) and never say which DEV sets to use → *"DEV predictions missing for … ddr, deepdrid, idrid"*. `tests/test_tables.py:87` already does it correctly by passing `select_dev_sets`.
+
+**2) `test_zz_guard_check.py`**
+The old guard test assumed tests run inside the real project folder. The new `conftest.py` chdirs **every** test into a temp folder, so its probe folder lands in `/tmp`, not in real `results/` → rmtree is (correctly) allowed → the "must be blocked" assert fails. The second guard test (`..._escape_the_tmp_dir`) passed → **your protection still works.**
+
+### Fix (3 small test-side edits — verified, `4 passed in 35.83s`)
+
+`tests/test_selection_fallbacks.py`:
+```python
+# line ~92
+winner = phase_select('phaseX_bad', reference='@phase2a_recipe',
+                      cfg={'select_dev_sets': ['messidor']})
+# line ~114
+winner = phase_select(phase, reference='p2b_base', cfg={'select_dev_sets': ['messidor']})
+```
+`tests/test_zz_guard_check.py`:
+```python
+def test_guard_blocks_rmtree_inside_real_results(repo_root, monkeypatch):
+    monkeypatch.chdir(str(repo_root))      # probe must sit in the REAL results tree
+```
+Copy-paste version:
+```bash
+sed -i "s/reference='@phase2a_recipe')   # used to raise IndexError/reference='@phase2a_recipe', cfg={'select_dev_sets': ['messidor']})/" tests/test_selection_fallbacks.py
+sed -i "s/reference='p2b_base')/reference='p2b_base', cfg={'select_dev_sets': ['messidor']})/" tests/test_selection_fallbacks.py
+sed -i "s/def test_guard_blocks_rmtree_inside_real_results():/def test_guard_blocks_rmtree_inside_real_results(repo_root, monkeypatch):\n    monkeypatch.chdir(str(repo_root))/" tests/test_zz_guard_check.py
+python -m pytest -q tests/test_selection_fallbacks.py tests/test_zz_guard_check.py
+```
+
+### Two things to remember
+- **Don't** weaken the strict check in `tables.py` — it is deliberate. It means the same for real work: **C4 `evaluate_all` must run before any `phase_select` on the amended endpoint** (D1–D3, E2), or you must add `--set select_dev_sets=[messidor]`.
+- You got **75 tests** (72+3) but the doc says 71 → `SERVER_TODO.md` B4 is stale, or your `tests/` folder is not 100 % identical to the Mac. Re-check B1 (`rsync … tests/`) and **copy these 3 fixed lines back to the Mac** so both sides match.
+
+Want me to apply these edits? Say "switch to Act mode" and I'll patch + re-run the full suite.`
