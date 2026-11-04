@@ -11,7 +11,7 @@ What can be deleted afterwards: `SERVER_CLEANUP.md`.
 
 ## A. Stop, wait, back up (before the new code goes on the server)
 
-- [ ] **A1 (mandatory) — stop the SSL pretraining.** Its contrastive loss has been 0.0000 for ~47 epochs;
+- [✅] **A1 (mandatory) — stop the SSL pretraining.** Its contrastive loss has been 0.0000 for ~47 epochs;
   the remaining 33 epochs cost ≈ 52 GPU h for no expected gain. SSL is reported as a negative control.
   Cancel the `pre_ssl` job in your scheduler (it is the job that writes `logs/pre_ssl/`); if it runs as a plain
   process on the node instead:
@@ -21,11 +21,11 @@ What can be deleted afterwards: `SERVER_CLEANUP.md`.
   ```
   Keep `checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch50.pth` and `..._epoch60.pth` (used by `p3a_ssl`, `p3a_ssl60`).
 
-- [ ] **A2 (mandatory) — let the jobs that are running now finish with the old code**
+- [✅] **A2 (mandatory) — let the jobs that are running now finish with the old code**
   (`p3c_joint_s1`, `p3c_coral_s1`, `p3c_none_s1`, `p3c_sup_s1`, `p3c_none_s2`). Do **not** submit any new
   job until step B is done. Their results are fully compatible: step C adds the new datasets to them.
 
-- [ ] **A3 (mandatory) — back up** the protocol state (small):
+- [✅] **A3 (mandatory) — back up** the protocol state (small):
   ```bash
   mkdir -p backups && tar czf backups/proto_$(date +%Y%m%d_%H%M)_before_v2.tgz results/ splits/ softlabels/ \
       checkpoints/*/config_snapshot.yaml checkpoints/*/thresholds.json
@@ -33,7 +33,7 @@ What can be deleted afterwards: `SERVER_CLEANUP.md`.
 
 ## B. Put the new code and the new datasets on the server
 
-- [ ] **B1 (mandatory) — copy the code from the Mac.** Copy only code and documents. **Never copy `splits/`,
+- [✅] **B1 (mandatory) — copy the code from the Mac.** Copy only code and documents. **Never copy `splits/`,
   `results/`, `checkpoints/`, `softlabels/` or `logs/` from the Mac**: the Mac copies are test leftovers
   (the Mac `splits/messidor_*_ids.json` hold 24/96 synthetic ids); the real ones exist only on the server.
   On the Mac, in the MODAL-Net folder (set `SERVER` once to the login and repo path you already use for scp):
@@ -43,11 +43,11 @@ What can be deleted afterwards: `SERVER_CLEANUP.md`.
         --exclude logs --exclude backups --exclude outputs --exclude PoxCSAF-Net --exclude _transfer \
         --exclude .git --exclude .pytest_cache --exclude __pycache__ --exclude .DS_Store ./ "$SERVER/"
   ```
-- [ ] **B2 (mandatory) — remove the four files that no longer exist in the code** (on the server):
+- [✅] **B2 (mandatory) — remove the four files that no longer exist in the code** (on the server):
   ```bash
   rm -f src/training/feature_balance.py src/models/wavelet_gate.py tests/test_feature_balance.py tests/test_smoke.py
   ```
-- [ ] **B3 (mandatory) — copy the three new datasets** (on the Mac; only what the code reads, ≈ 16 GB):
+- [✅] **B3 (mandatory) — copy the three new datasets** (on the Mac; only what the code reads, ≈ 16 GB):
   ```bash
   rsync -av datasets/DDR-dataset/DR_grading datasets/DDR-dataset/lesion_segmentation "$SERVER/datasets/DDR-dataset/"
   rsync -av --exclude .git --exclude ultra-widefield_images datasets/DeepDRiD/regular_fundus_images "$SERVER/datasets/DeepDRiD/"
@@ -55,16 +55,16 @@ What can be deleted afterwards: `SERVER_CLEANUP.md`.
   ```
   The DeepDRiD test folder must be called `Online-Challenge1_2-Evaluation` (as on the Mac); paths are in
   `configs/config.yaml -> paths`.
-- [ ] **B4 (mandatory) — tests** (CPU, ≈ 4 min; they run in temporary folders and cannot touch real files):
+- [❌ - Failed] **B4 (mandatory) — tests** (CPU, ≈ 4 min; they run in temporary folders and cannot touch real files):
   ```bash
   env/bin/python -m pytest -q          # expected: 71 passed
   ```
-- [ ] **B5 (mandatory) — remove the stale generated tables and the test leftovers**: run sections 1 and 2 of
+- [✅] **B5 (mandatory) — remove the stale generated tables and the test leftovers**: run sections 1 and 2 of
   `SERVER_CLEANUP.md` now (before step C), so that no table built by the old code survives.
 
 ## C. Freeze the new evaluation sets and evaluate every finished model on them
 
-- [ ] **C1 (mandatory) — duplicate audit of DDR / DeepDRiD / IDRiD** (CPU, ≈ 1–2 h; re-uses the cached hashes
+- [🔃 - In Progress] **C1 (mandatory) — duplicate audit of DDR / DeepDRiD / IDRiD** (CPU, ≈ 1–2 h; re-uses the cached hashes
   of the first audit, so EyePACS is not re-hashed):
   ```bash
   env/bin/python main.py --mode dedup_external
