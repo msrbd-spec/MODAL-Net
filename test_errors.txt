@@ -1,3 +1,9 @@
+# Questions:
+1. In `SERVER_TODO.md` at A2, the training has already been finished. Will the results be automatically included into the master table or is there any instruction given in the SERVER_TODO.md that'll merge these results?
+
+2. In the new external dataset extensions, all the files in this location: datasets/DDR-dataset/.cache/huggingface/download, contain .lock or .metadata extensions. Like datasets/DDR-dataset/.cache/huggingface/download/DR_grading/test/007-2809-100.jpg.lock and datasets/DDR-dataset/.cache/huggingface/download/DR_grading/test/007-2809-100.jpg.metadata. Will it cause any issue?
+
+# Error: 
 (env) [imam.bokhary@vngpuc8005 DR]$ python -m pytest -q          # expected: 71 passed
 ..........................................................FF.............F.                                                                                                                    [100%]
 ============================================================================================== FAILURES ==============================================================================================
