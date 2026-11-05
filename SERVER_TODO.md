@@ -358,15 +358,17 @@ E1 and E3 are independent (both inherit `p3b_joint`): submit all twelve jobs tog
 plus the wave-5 jobs of F1 / G1 below. Every run evaluates itself on all sets with all metrics at the end
 (no separate evaluate step needed).
 
-- [ ] **E1 (mandatory) — phase 4j, six arms, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2 = `p3b_joint`.
+- [🔃] **E1 (mandatory) — phase 4j, six arms, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2 = `p3b_joint`.
   ```bash
-  gpu phase4j_label_loss/p4j_coral           --mode experiment --phase phase4j_label_loss --tag p4j_coral           --inherit p3b_joint --set loss=coral head_type=coral
-  gpu phase4j_label_loss/p4j_emd             --mode experiment --phase phase4j_label_loss --tag p4j_emd             --inherit p3b_joint --set loss=ce_emd lambda_emd=1.0
-  gpu phase4j_label_loss/p4j_aasl            --mode experiment --phase phase4j_label_loss --tag p4j_aasl            --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4
-  gpu phase4j_label_loss/p4j_aasl_emd        --mode experiment --phase phase4j_label_loss --tag p4j_aasl_emd        --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4 loss=ce_emd lambda_emd=1.0
-  gpu phase4j_label_loss/p4j_coralsrc_shared --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc_shared --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=false
-  gpu phase4j_label_loss/p4j_coralsrc        --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc        --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=true src_offset_l2=0.1
+  mkdir -p outputs/phase4j_label_loss   # the -l paths go in here, create first
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_coral.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coral --inherit p3b_joint --set loss=coral head_type=coral
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_emd.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_emd --inherit p3b_joint --set loss=ce_emd lambda_emd=1.0
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_aasl.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_aasl --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_aasl_emd.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_aasl_emd --inherit p3b_joint --set soft_labels=aasl soft_label_run=sl_p4 loss=ce_emd lambda_emd=1.0
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_coralsrc_shared.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc_shared --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_coralsrc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coralsrc --inherit p3b_joint --set loss=coral head_type=coral_src src_offsets=true src_offset_l2=0.1
   ```
+  
   Checks while / after they run:
   ```bash
   grep -c "AASL soft labels for fold" logs/p4j_aasl/*.log logs/p4j_aasl_emd/*.log    # each must print 5
