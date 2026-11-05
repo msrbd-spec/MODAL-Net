@@ -190,9 +190,13 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
 - [🔃] **C4 (mandatory) — evaluate every finished tag on every set** (GPU, ≈ 0.25 h per tag, ≈ 7 GPU h in total).
   Needs C2. **PARALLEL**: three jobs on disjoint tag lists (≈ 2.5 h wall clock):
   ```bash
-  gpu c4/eval_part1 --mode evaluate_all --set 'evaluate_only=[p2a_plain,p2a_reg,p2a_mix,p2a_osmooth,p2a_ema,p2a_aug,p2a_sam,p2a_bundle]'
-  gpu c4/eval_part2 --mode evaluate_all --set 'evaluate_only=[p2b_scaled,p2b_none,p2b_clahe_only,p3a_sup,p3a_sup_v2,p3a_sslsup,p3a_ssl,p3b_joint,p3b_joint_w25]'
-  gpu c4/eval_part3 --mode evaluate_all --set 'evaluate_only=[p4_coral,p4_emd,p3c_none_s1,p3c_none_s2,p3c_joint_s1,p3c_coral_s1,p3c_sup_s1]'
+  mkdir -p outputs/c4   # the -l paths write into this folder, create it first
+
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p2a_plain,p2a_reg,p2a_mix,p2a_osmooth,p2a_ema,p2a_aug,p2a_sam,p2a_bundle]'
+
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p2b_scaled,p2b_none,p2b_clahe_only,p3a_sup,p3a_sup_v2,p3a_sslsup,p3a_ssl,p3b_joint,p3b_joint_w25]'
+
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part3.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p4_coral,p4_emd,p3c_none_s1,p3c_none_s2,p3c_joint_s1,p3c_coral_s1,p3c_sup_s1]'
   ```
   (Single-job alternative: `gpu c4/eval_all --mode evaluate_all`.) An `evaluate_only` name without a results
   folder stops that job at once with the list of unknown names: remove the name from the list and re-submit.
