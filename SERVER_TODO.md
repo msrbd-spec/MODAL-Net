@@ -314,7 +314,7 @@ p3b_joint
   env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=original select_report_only=true
   ```
 
-  Output:
+  ### First Output:
   2026-11-05 17:08:58 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
 Traceback (most recent call last):
   File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/main.py", line 188, in <module>
@@ -326,6 +326,28 @@ Traceback (most recent call last):
 FileNotFoundError: phase_select phase4_label_loss: DEV predictions missing for ['p4_aasl:ddr', 'p4_aasl:deepdrid', 'p4_aasl:idrid']. Run --mode evaluate (or evaluate_all) for these tags first, or restrict select_dev_sets.
 2026-11-05 17:09:06 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
 phase_select phase4_label_loss (original, report only): best arm p4_coral; WINNER.txt and summaries untouched -> results/phase4_label_loss/phase_table_original.csv
+
+### How I fix them:
+```bash
+  ls results/phase4_label_loss/
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_p4_aasl.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate --tag p4_aasl
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_p4_aasl_emd.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate --tag p4_aasl_emd
+  env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
+  env/bin/python -c "import pandas as pd; t=pd.read_csv('results/phase4_label_loss/phase_table_amended.csv'); print(t[['experiment','oof_qwk','d_oof_qwk','d_dev_mean_qwk','d_dev_mean_qwk_ci_lo','dev_sets_used','decision_amended']].to_string(index=False))"
+  env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/python main.py --mode master_table
+```
+
+### Final output:
+env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
+2026-11-05 17:33:31 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
+phase_select phase4_label_loss (amended, report only): best arm p4_coral; WINNER.txt and summaries untouched -> results/phase4_label_loss/phase_table_amended.csv
+env/bin/python -c "import pandas as pd; t=pd.read_csv('results/phase4_label_loss/phase_table_amended.csv'); print(t[['experiment','oof_qwk','d_oof_qwk','d_dev_mean_qwk','d_dev_mean_qwk_ci_lo','dev_sets_used','decision_amended']].to_string(index=False))"
+ experiment  oof_qwk  d_oof_qwk  d_dev_mean_qwk  d_dev_mean_qwk_ci_lo               dev_sets_used decision_amended
+    p4_aasl     0.93       0.01            0.01                 -0.00 messidor,ddr,deepdrid,idrid           REJECT
+p4_aasl_emd     0.93       0.00            0.01                  0.00 messidor,ddr,deepdrid,idrid           REJECT
+   p4_coral     0.93       0.01            0.02                  0.01 messidor,ddr,deepdrid,idrid            ADOPT
+     p4_emd     0.93      -0.00           -0.02                 -0.04 messidor,ddr,deepdrid,idrid           REJECT
+
 
   `p4_aasl` / `p4_aasl_emd` on the old lineage are **not** run any more; they are run on the new lineage (E1).
 - [✅] Back up (command in 0.2).
