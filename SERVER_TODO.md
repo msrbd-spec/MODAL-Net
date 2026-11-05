@@ -276,7 +276,7 @@ All of D is CPU and takes minutes. Needs C4 (the amended endpoint refuses to run
 DDR / DeepDRiD / IDRiD is missing; that error means C4 is not finished for that tag). D1, D2 and D3 are
 independent of each other; run them in this order anyway.
 
-- [ ] **D1 (mandatory) — document the closed phases under the amended endpoint** (tables only, history untouched):
+- [✅] **D1 (mandatory) — document the closed phases under the amended endpoint** (tables only, history untouched):
   ```bash
   env/bin/python main.py --mode phase_select --phase phase2a_recipe     --reference p2a_plain --set select_endpoint=amended select_report_only=true
   env/bin/python main.py --mode phase_select --phase phase2b_preprocess --reference p2a_reg   --set select_endpoint=amended select_report_only=true
@@ -284,7 +284,16 @@ independent of each other; run them in this order anyway.
   env/bin/python main.py --mode phase_select --phase phase3a_pretrain   --reference p2b_none  --set select_endpoint=original select_report_only=true
   ```
   Output: `results/<phase>/phase_table_amended.csv` / `phase_table_original.csv`; `WINNER.txt` is not touched.
-- [ ] **D2 (mandatory) — phase 3b decision under the amended endpoint** (rewrites `results/phase3b_joint/WINNER.txt`):
+2026-11-05 16:51:33 | INFO | Mode: phase_select  Tag: default  Phase: phase2a_recipe
+phase_select phase2a_recipe (amended, report only): best arm p2a_plain; WINNER.txt and summaries untouched -> results/phase2a_recipe/phase_table_amended.csv
+2026-11-05 16:52:22 | INFO | Mode: phase_select  Tag: default  Phase: phase2b_preprocess
+phase_select phase2b_preprocess (amended, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase2b_preprocess/phase_table_amended.csv
+2026-11-05 16:52:46 | INFO | Mode: phase_select  Tag: default  Phase: phase3a_pretrain
+phase_select phase3a_pretrain (amended, report only): best arm p3a_sup; WINNER.txt and summaries untouched -> results/phase3a_pretrain/phase_table_amended.csv
+2026-11-05 16:53:16 | INFO | Mode: phase_select  Tag: default  Phase: phase3a_pretrain
+phase_select phase3a_pretrain (original, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase3a_pretrain/phase_table_original.csv
+
+- [✅] **D2 (mandatory) — phase 3b decision under the amended endpoint** (rewrites `results/phase3b_joint/WINNER.txt`):
   ```bash
   env/bin/python main.py --mode phase_select --phase phase3b_joint --reference p2b_none --set select_endpoint=amended
   env/bin/python main.py --mode phase_select --phase phase3b_joint --reference p2b_none --set select_endpoint=original select_report_only=true
@@ -292,13 +301,34 @@ independent of each other; run them in this order anyway.
   ```
   Expected `p3b_joint`. If another tag wins, **stop here** and look at `phase_table.csv` before step E (the new
   lineage below inherits `p3b_joint` by name, so a different winner means the plan must be re-discussed).
-- [ ] **D3 (mandatory) — old phase 4 (on `p2b_none`) as a report-only table**:
+  Output: 
+  2026-11-05 17:06:42 | INFO | Mode: phase_select  Tag: default  Phase: phase3b_joint
+phase_select for phase3b_joint (amended): WINNER is p3b_joint. Table written to results/phase3b_joint/phase_table.csv
+2026-11-05 17:06:59 | INFO | Mode: phase_select  Tag: default  Phase: phase3b_joint
+phase_select phase3b_joint (original, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase3b_joint/phase_table_original.csv
+p3b_joint
+
+- [⛔] **D3 (mandatory) — old phase 4 (on `p2b_none`) as a report-only table**:
   ```bash
   env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
   env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=original select_report_only=true
   ```
+
+  Output:
+  2026-11-05 17:08:58 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
+Traceback (most recent call last):
+  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/main.py", line 188, in <module>
+    main()
+  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/main.py", line 157, in main
+    phase_select(args.phase, args.reference, design=getattr(args, 'design', 'parallel'), cfg=cfg)
+  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/src/evaluation/tables.py", line 300, in phase_select
+    raise FileNotFoundError(
+FileNotFoundError: phase_select phase4_label_loss: DEV predictions missing for ['p4_aasl:ddr', 'p4_aasl:deepdrid', 'p4_aasl:idrid']. Run --mode evaluate (or evaluate_all) for these tags first, or restrict select_dev_sets.
+2026-11-05 17:09:06 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
+phase_select phase4_label_loss (original, report only): best arm p4_coral; WINNER.txt and summaries untouched -> results/phase4_label_loss/phase_table_original.csv
+
   `p4_aasl` / `p4_aasl_emd` on the old lineage are **not** run any more; they are run on the new lineage (E1).
-- [ ] Back up (command in 0.2).
+- [✅] Back up (command in 0.2).
 
 ## E. New lineage: ordinal heads and the cut-point component (GPU)
 
