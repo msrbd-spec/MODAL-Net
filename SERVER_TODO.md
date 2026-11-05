@@ -10,20 +10,22 @@ skipped without breaking anything later.
 ## Daily report (upload these files to Claude once a day)
 
 **Start:** after **D3** is done. Then submit the wave-5 jobs that do not depend on the plan (F1, F2a
-`p9_base_*`, G1, G2, G3b), but submit **E1 / E3 only after Claude's feedback on that first report**.
+`p9_base_*`, G2b, G3b), but submit **E1 / E3 only after Claude's feedback on that first report**.
 
 Before uploading, refresh the master tables on the server (CPU, ≈ 1 min):
 ```bash
 env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/python main.py --mode master_table
 ```
+A run counts in the report only when it is DONE (`st <tag>`); for E1 / E3 send the report after the selection
+lines of E2 / E3 have been run (they write the phase tables).
 
 | # | Server path | When |
 |---|---|---|
 | 1 | `results/master/master_full.csv` | every report (every run × every set × every metric) |
 | 2 | `results/master/seed_compare.csv` | every report once seed runs exist |
-| 3 | `results/<phase>/phase_table.csv` | for each phase selected since the last report |
-| 4 | `results/master/cutpoint_diagnostic.csv` | first report (and whenever C5 is re-run) |
-| 5 | `results/master/leakage_check.csv` | first report only |
+| 3 | `results/<phase>/phase_table.csv` | for each phase selected since the last report: after E2 `results/phase4j_label_loss/phase_table.csv`; after E3 `results/phase10_ms_ddr/phase_table.csv` and `results/phase10_ms_deepdrid/phase_table.csv` |
+| 4 | `results/master/cutpoint_diagnostic.csv` | first report (done) and whenever C5 is re-run |
+| 5 | `results/master/leakage_check.csv` | first report only (done) |
 
 ---
 
@@ -33,15 +35,6 @@ env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/pyth
 ```bash
 cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-
-# gpu <log-name> <main.py arguments...>   -> submits one GPU job; its log goes to outputs/<log-name>.txt
-gpu() {
-  local log="outputs/$1.txt"; shift
-  mkdir -p "$(dirname "$log")"
-  phd run -p shr_gpu -ng 1 -GR H100 -l "$log" -- \
-    env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-    env/bin/python main.py "$@"
-}
 
 # st <tag> [<tag> ...]   -> prints DONE when the run has finished (results/<phase>/<tag>/summary.csv exists)
 st() {
@@ -56,7 +49,8 @@ st() {
   check line given in the step) before you start the next one.
 - **PARALLEL** = submit all lines of the block at the same time, each line is its own GPU job.
   If `phd run` keeps your terminal busy until the job ends, open one `tmux` window per line.
-- CPU steps (no `gpu` in front) run directly in the terminal. Run long CPU steps inside `tmux`/`screen`
+- GPU steps start with `phd run ...` (one line = one scheduler job; its log goes to the `-l` file under `outputs/`).
+  CPU steps (plain `env/bin/python ...`) run directly in the terminal. Run long CPU steps inside `tmux`/`screen`
   so they survive a disconnect.
 - Re-running exactly the same line **resumes** a run (finished folds are skipped). Never run two jobs with
   the same `--tag` at the same time.
@@ -82,7 +76,7 @@ st() {
 | 2 | C1 → C2 → C3 | CPU, sequential | B4 passes |
 | 3 | C4 (re-evaluate every finished run) | GPU, 3 jobs parallel | C2 done (C3 can run at the same time) |
 | 4 | C4b → C5 → D1, D2, D3 (interim tables, diagnostic, selections) | CPU, minutes | C4 done |
-| 5 | E1 (6 jobs) + E3 (6 jobs) + F1 (3) + G1 (2) + `p9_base` seeds (2) + optional G2, G3b | GPU, all parallel | D2 says `p3b_joint` |
+| 5 | E1 (6 jobs) + E3 (6 jobs) + F1 (1 evaluate job) + `p9_base` seeds (2) + optional G2b, G3b | GPU, all parallel | D2 says `p3b_joint` |
 | 6 | E2, E3 selections | CPU, seconds | all E1 / E3 runs DONE |
 | 7 | F2 (rest of the seeds), optional G3, G4 | GPU, parallel | E2 (FINAL known) |
 | 8 | F3, H1, H2 | CPU + GPU | F2 done (H1/H2 may start right after E2) |
@@ -193,17 +187,22 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   mkdir -p outputs/c4   # the -l paths write into this folder, create it first
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p2a_plain,p2a_reg,p2a_mix,p2a_osmooth,p2a_ema,p2a_aug,p2a_sam,p2a_bundle]'
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p2b_scaled,p2b_none,p2b_clahe_only,p3a_sup,p3a_sup_v2,p3a_sslsup,p3a_ssl,p3b_joint,p3b_joint_w25]'
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part3.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p4_coral,p4_emd,p3c_none_s1,p3c_none_s2,p3c_joint_s1,p3c_coral_s1,p3c_sup_s1]'
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part3.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p4_coral,p4_emd,p4_aasl,p4_aasl_emd,p3c_none_s1,p3c_none_s2,p3c_joint_s1,p3c_coral_s1,p3c_sup_s1]'
   ```
 
-  (Single-job alternative: `gpu c4/eval_all --mode evaluate_all`.) An `evaluate_only` name without a results
+  (Single-job alternative: the same `phd run ...` line with `--mode evaluate_all` and no `--set`.) An `evaluate_only` name without a results
   folder stops that job at once with the list of unknown names: remove the name from the list and re-submit.
   Check when all three jobs have ended:
   ```bash
   cat results/master/evaluate_all_report.csv            # every row must say ok (zoo rows say skipped)
   ```
-  A row that is not `ok`: re-run only that tag, e.g. `gpu c4/eval_p3b_joint --mode evaluate --tag p3b_joint`.
-- [⛔] **C4b (mandatory, CPU, seconds) — interim seed and master tables** (needs C4). They now hold every finished
+  A row that is not `ok`: re-run only that tag, e.g.
+  `phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_p3b_joint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate --tag p3b_joint`.
+  Then check that **no** finished run was left out of the three lists (each printed folder needs the same `--mode evaluate --tag <tag>` job):
+  ```bash
+  for d in results/phase*/*/; do [ -f "$d/oof.npz" ] && [ ! -f "$d/predictions_ddr_dev.npz" ] && echo "not evaluated: $d"; done
+  ```
+- [✅] **C4b (mandatory, CPU, seconds) — interim seed and master tables** (needs C4). They now hold every finished
   run, the A2 seed runs included, on every internal and external set:
   ```bash
   env/bin/python main.py --mode seed_summary --reference p3b_joint     # results/master/seed_variance.csv + seed_compare.csv
@@ -211,14 +210,6 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   ```
   These are interim tables: they are overwritten in F3 and H3, so it does not matter how often you run them.
   Run them only after C4: before C4 the DDR / DeepDRiD / IDRiD columns are empty.
-
-  ### Outputs:
-  2026-11-05 16:02:43 | INFO | Mode: seed_summary  Tag: default  Phase: None
-/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/env/lib/python3.9/site-packages/scipy/stats/_axis_nan_policy.py:531: RuntimeWarning: Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.
-  res = hypotest_fun_out(*samples, **kwds)
-seed_summary: 26 configuration groups -> results/master/seed_variance.csv; comparisons vs p3b_joint -> results/master/seed_compare.csv
-2026-11-05 16:02:50 | INFO | Mode: master_table  Tag: default  Phase: None
-master_table: Compiled 44 experiments into results/master/
 
 - [✅] **C5 (mandatory, CPU, seconds) — cut-point diagnostic**, the pre-test of the new component (needs C4):
   ```bash
@@ -229,46 +220,6 @@ master_table: Compiled 44 experiments into results/master/
   images well; only its cut-points are wrong for a new site". The second table (TEST, cut-points from the whole
   DEV: `qwk_gain`, `mild_recall_argmax → mild_recall_devcal`, `pred_nodr_argmax → pred_nodr_devcal`, next to
   `test_bin_auroc`) is for reporting only. Whatever the outcome, both tables go into the paper (pre-declared here).
-
-  ### Result:
-        tag  dataset  n_dev  devcf_qwk_argmax  devcf_qwk_refit  devcf_qwk_gain  devcf_gain_lo  devcf_gain_hi
- p2b_none messidor    349             0.662            0.751           0.090          0.031          0.133
- p2b_none      ddr   2445             0.736            0.841           0.105          0.079          0.124
- p2b_none deepdrid    399             0.767            0.819           0.052          0.002          0.088
- p2b_none    idrid    413             0.816            0.858           0.042          0.011          0.074
-  p3a_sup messidor    349             0.702            0.775           0.073          0.036          0.115
-  p3a_sup      ddr   2445             0.783            0.886           0.103          0.084          0.118
-  p3a_sup deepdrid    399             0.788            0.852           0.064          0.028          0.096
-  p3a_sup    idrid    413             0.809            0.887           0.078          0.054          0.101
-p3b_joint messidor    349             0.765            0.793           0.028         -0.017          0.061
-p3b_joint      ddr   2445             0.838            0.884           0.047          0.032          0.062
-p3b_joint deepdrid    399             0.849            0.868           0.019         -0.013          0.049
-p3b_joint    idrid    413             0.830            0.889           0.059          0.040          0.077
- p4_coral messidor    349             0.690            0.768           0.078          0.043          0.120
- p4_coral      ddr   2445             0.755            0.857           0.102          0.083          0.124
- p4_coral deepdrid    399             0.781            0.839           0.058          0.014          0.086
- p4_coral    idrid    413             0.833            0.881           0.049          0.026          0.074
-
-      tag  dataset  n_test  test_bin_auroc  qwk_argmax  qwk_devcal  qwk_gain  qwk_gain_ci_lo  qwk_gain_ci_hi  mild_recall_argmax  mild_recall_devcal  pred_nodr_argmax  pred_nodr_devcal  true_nodr_share
- p2b_none messidor    1395           0.936       0.698       0.792     0.094           0.069           0.118               0.104               0.335            74.265            56.559           58.423
- p2b_none      ddr    3638           0.926       0.608       0.775     0.166           0.148           0.184               0.220               0.231            67.922            55.607           49.093
- p2b_none deepdrid     399           0.964       0.833       0.867     0.034           0.011           0.057               0.457               0.400            52.882            50.125           50.125
- p2b_none    idrid     103           0.899       0.676       0.730     0.054          -0.026           0.133               0.800               0.400            12.621            27.184           33.010
-  p3a_sup messidor    1395           0.946       0.741       0.811     0.070           0.050           0.091               0.283               0.528            68.172            54.050           58.423
-  p3a_sup      ddr    3638           0.943       0.669       0.828     0.158           0.140           0.176               0.328               0.339            65.943            48.955           49.093
-  p3a_sup deepdrid     399           0.981       0.861       0.890     0.028           0.007           0.051               0.543               0.600            52.632            44.361           50.125
-  p3a_sup    idrid     103           0.930       0.682       0.798     0.115           0.043           0.191               0.600               0.200            21.359            33.010           33.010
-p3b_joint messidor    1395           0.915       0.802       0.823     0.021          -0.001           0.044               0.330               0.250            68.100            62.151           58.423
-p3b_joint      ddr    3638           0.906       0.731       0.814     0.082           0.067           0.098               0.446               0.172            63.579            54.233           49.093
-p3b_joint deepdrid     399           0.986       0.908       0.909     0.001          -0.017           0.018               0.543               0.571            51.128            46.867           50.125
-p3b_joint    idrid     103           0.927       0.710       0.781     0.072           0.002           0.147               0.800               0.200            20.388            33.010           33.010
- p4_coral messidor    1395           0.927       0.716       0.806     0.090           0.066           0.113               0.137               0.425            73.333            55.556           58.423
- p4_coral      ddr    3638           0.891       0.611       0.790     0.178           0.158           0.198               0.129               0.285            70.533            49.258           49.093
- p4_coral deepdrid     399           0.961       0.828       0.858     0.030           0.004           0.058               0.371               0.429            58.145            45.865           50.125
- p4_coral    idrid     103           0.914       0.655       0.762     0.107           0.035           0.185               0.800               0.400            15.534            30.097           33.010
-
-written: results/master/cutpoint_diagnostic.csv
-
 
 ## D. Re-issue the selection under the amended endpoint (written before any phase-4j result exists)
 
@@ -284,15 +235,6 @@ independent of each other; run them in this order anyway.
   env/bin/python main.py --mode phase_select --phase phase3a_pretrain   --reference p2b_none  --set select_endpoint=original select_report_only=true
   ```
   Output: `results/<phase>/phase_table_amended.csv` / `phase_table_original.csv`; `WINNER.txt` is not touched.
-2026-11-05 16:51:33 | INFO | Mode: phase_select  Tag: default  Phase: phase2a_recipe
-phase_select phase2a_recipe (amended, report only): best arm p2a_plain; WINNER.txt and summaries untouched -> results/phase2a_recipe/phase_table_amended.csv
-2026-11-05 16:52:22 | INFO | Mode: phase_select  Tag: default  Phase: phase2b_preprocess
-phase_select phase2b_preprocess (amended, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase2b_preprocess/phase_table_amended.csv
-2026-11-05 16:52:46 | INFO | Mode: phase_select  Tag: default  Phase: phase3a_pretrain
-phase_select phase3a_pretrain (amended, report only): best arm p3a_sup; WINNER.txt and summaries untouched -> results/phase3a_pretrain/phase_table_amended.csv
-2026-11-05 16:53:16 | INFO | Mode: phase_select  Tag: default  Phase: phase3a_pretrain
-phase_select phase3a_pretrain (original, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase3a_pretrain/phase_table_original.csv
-
 - [✅] **D2 (mandatory) — phase 3b decision under the amended endpoint** (rewrites `results/phase3b_joint/WINNER.txt`):
   ```bash
   env/bin/python main.py --mode phase_select --phase phase3b_joint --reference p2b_none --set select_endpoint=amended
@@ -301,61 +243,19 @@ phase_select phase3a_pretrain (original, report only): best arm p2b_none; WINNER
   ```
   Expected `p3b_joint`. If another tag wins, **stop here** and look at `phase_table.csv` before step E (the new
   lineage below inherits `p3b_joint` by name, so a different winner means the plan must be re-discussed).
-  Output: 
-  2026-11-05 17:06:42 | INFO | Mode: phase_select  Tag: default  Phase: phase3b_joint
-phase_select for phase3b_joint (amended): WINNER is p3b_joint. Table written to results/phase3b_joint/phase_table.csv
-2026-11-05 17:06:59 | INFO | Mode: phase_select  Tag: default  Phase: phase3b_joint
-phase_select phase3b_joint (original, report only): best arm p2b_none; WINNER.txt and summaries untouched -> results/phase3b_joint/phase_table_original.csv
-p3b_joint
-
-- [⛔] **D3 (mandatory) — old phase 4 (on `p2b_none`) as a report-only table**:
+- [✅] **D3 (mandatory) — old phase 4 (on `p2b_none`) as a report-only table**:
   ```bash
   env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
   env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=original select_report_only=true
   ```
 
-  ### First Output:
-  2026-11-05 17:08:58 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
-Traceback (most recent call last):
-  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/main.py", line 188, in <module>
-    main()
-  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/main.py", line 157, in main
-    phase_select(args.phase, args.reference, design=getattr(args, 'design', 'parallel'), cfg=cfg)
-  File "/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/src/evaluation/tables.py", line 300, in phase_select
-    raise FileNotFoundError(
-FileNotFoundError: phase_select phase4_label_loss: DEV predictions missing for ['p4_aasl:ddr', 'p4_aasl:deepdrid', 'p4_aasl:idrid']. Run --mode evaluate (or evaluate_all) for these tags first, or restrict select_dev_sets.
-2026-11-05 17:09:06 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
-phase_select phase4_label_loss (original, report only): best arm p4_coral; WINNER.txt and summaries untouched -> results/phase4_label_loss/phase_table_original.csv
-
-### How I fix them:
-```bash
-  ls results/phase4_label_loss/
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_p4_aasl.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate --tag p4_aasl
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_p4_aasl_emd.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate --tag p4_aasl_emd
-  env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
-  env/bin/python -c "import pandas as pd; t=pd.read_csv('results/phase4_label_loss/phase_table_amended.csv'); print(t[['experiment','oof_qwk','d_oof_qwk','d_dev_mean_qwk','d_dev_mean_qwk_ci_lo','dev_sets_used','decision_amended']].to_string(index=False))"
-  env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/python main.py --mode master_table
-```
-
-### Final output:
-env/bin/python main.py --mode phase_select --phase phase4_label_loss --reference p2b_none --set select_endpoint=amended select_report_only=true
-2026-11-05 17:33:31 | INFO | Mode: phase_select  Tag: default  Phase: phase4_label_loss
-phase_select phase4_label_loss (amended, report only): best arm p4_coral; WINNER.txt and summaries untouched -> results/phase4_label_loss/phase_table_amended.csv
-env/bin/python -c "import pandas as pd; t=pd.read_csv('results/phase4_label_loss/phase_table_amended.csv'); print(t[['experiment','oof_qwk','d_oof_qwk','d_dev_mean_qwk','d_dev_mean_qwk_ci_lo','dev_sets_used','decision_amended']].to_string(index=False))"
- experiment  oof_qwk  d_oof_qwk  d_dev_mean_qwk  d_dev_mean_qwk_ci_lo               dev_sets_used decision_amended
-    p4_aasl     0.93       0.01            0.01                 -0.00 messidor,ddr,deepdrid,idrid           REJECT
-p4_aasl_emd     0.93       0.00            0.01                  0.00 messidor,ddr,deepdrid,idrid           REJECT
-   p4_coral     0.93       0.01            0.02                  0.01 messidor,ddr,deepdrid,idrid            ADOPT
-     p4_emd     0.93      -0.00           -0.02                 -0.04 messidor,ddr,deepdrid,idrid           REJECT
-
-
-  `p4_aasl` / `p4_aasl_emd` on the old lineage are **not** run any more; they are run on the new lineage (E1).
+  No new phase-4 runs on the old lineage; AASL is tested on the new lineage (E1).
 - [✅] Back up (command in 0.2).
 
 ## E. New lineage: ordinal heads and the cut-point component (GPU)
 
 E1 and E3 are independent (both inherit `p3b_joint`): submit all twelve jobs together if you have the slots,
-plus the wave-5 jobs of F1 / G1 below. Every run evaluates itself on all sets with all metrics at the end
+plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself on all sets with all metrics at the end
 (no separate evaluate step needed).
 
 - [🔃] **E1 (mandatory) — phase 4j, six arms, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2 = `p3b_joint`.
@@ -391,13 +291,14 @@ plus the wave-5 jobs of F1 / G1 below. Every run evaluates itself on all sets wi
   This is the multi-site test of the cut-point idea: each arm is scored only on the datasets it never saw.
   ```bash
   # sources APTOS + EyePACS + DDR  -> held out: Messidor-2, DeepDRiD, IDRiD
-  gpu phase10_ms_ddr/p10d_ce       --mode experiment --phase phase10_ms_ddr --tag p10d_ce       --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]'
-  gpu phase10_ms_ddr/p10d_coralsh  --mode experiment --phase phase10_ms_ddr --tag p10d_coralsh  --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=false
-  gpu phase10_ms_ddr/p10d_coralsrc --mode experiment --phase phase10_ms_ddr --tag p10d_coralsrc --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=true
+  mkdir -p outputs/phase10_ms_ddr outputs/phase10_ms_deepdrid   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_ddr/p10d_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_ce       --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]'
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_ddr/p10d_coralsh.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_coralsh  --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_ddr/p10d_coralsrc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_ddr --tag p10d_coralsrc --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,ddr]' loss=coral head_type=coral_src src_offsets=true
   # sources APTOS + EyePACS + DeepDRiD -> held out: Messidor-2, DDR, IDRiD
-  gpu phase10_ms_deepdrid/p10q_ce       --mode experiment --phase phase10_ms_deepdrid --tag p10q_ce       --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]'
-  gpu phase10_ms_deepdrid/p10q_coralsh  --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsh  --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=false
-  gpu phase10_ms_deepdrid/p10q_coralsrc --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsrc --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=true
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_deepdrid/p10q_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_ce       --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]'
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_deepdrid/p10q_coralsh.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsh  --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_ms_deepdrid/p10q_coralsrc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_ms_deepdrid --tag p10q_coralsrc --inherit p3b_joint --set joint_eyepacs=false 'extra_sources=[eyepacs,deepdrid]' loss=coral head_type=coral_src src_offsets=true
   ```
   Then, SEQUENTIAL (CPU, seconds), each line only when its three runs are DONE:
   ```bash
@@ -413,37 +314,46 @@ plus the wave-5 jobs of F1 / G1 below. Every run evaluates itself on all sets wi
 
 Seed replicates are grouped automatically by configuration (any folder, any tag name).
 
-- [ ] **F1 (mandatory) — finish the phase-3c wave with the new code, PARALLEL** (≈ 10 GPU h). Can start
-  together with E1 / E3 (wave 5); needs only C2. (`p3c_none_s2` finished in A2.)
+- [ ] **F1 (mandatory) — evaluate the eight runs that are already trained (old code) but were not in the C4 lists**
+  (GPU, one job, ≈ 2 h). `p3c_joint_s2`, `p3c_coral_s2`, `p3c_sup_s2` (seeds), `p3c_dose5k`, `p3c_dose2k` (G1),
+  `p3a_ssl60` (G2) and `p3c_cnext_ref`, `p3c_effnet_ref` (backbone check on the old lineage) finished before the
+  new code; they only need the new evaluation sets. **Do not retrain them.** Can start now.
   ```bash
-  gpu phase3c_seeds/p3c_joint_s2 --mode experiment --phase phase3c_seeds --tag p3c_joint_s2 --inherit p3b_joint --set seed=2
-  gpu phase3c_seeds/p3c_coral_s2 --mode experiment --phase phase3c_seeds --tag p3c_coral_s2 --inherit p4_coral  --set seed=2
-  gpu phase3c_seeds/p3c_sup_s2   --mode experiment --phase phase3c_seeds --tag p3c_sup_s2   --inherit p3a_sup   --set seed=2
+  mkdir -p outputs/c4
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/c4/eval_part4.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode evaluate_all --set 'evaluate_only=[p3c_joint_s2,p3c_coral_s2,p3c_sup_s2,p3c_dose5k,p3c_dose2k,p3a_ssl60,p3c_cnext_ref,p3c_effnet_ref]'
   ```
+  Afterwards the C4 check loop must print nothing:
+  ```bash
+  for d in results/phase*/*/; do [ -f "$d/oof.npz" ] && [ ! -f "$d/predictions_ddr_dev.npz" ] && echo "not evaluated: $d"; done
+  ```
+  (If the old F1 / G1 / G2 `--mode experiment` lines were already submitted, let them finish: a re-run skips the
+  finished folds and only evaluates, so the result is the same.)
 - [ ] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
   Three groups with different start conditions:
   ```bash
   # F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
-  gpu phase9_final/p9_base_s1 --mode experiment --phase phase9_final --tag p9_base_s1 --inherit p2a_plain --set seed=1
-  gpu phase9_final/p9_base_s2 --mode experiment --phase phase9_final --tag p9_base_s2 --inherit p2a_plain --set seed=2
+  mkdir -p outputs/phase9_final outputs/phase4j_seeds outputs/phase10_seeds   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s1 --inherit p2a_plain --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s2 --inherit p2a_plain --set seed=2
 
   # F2b: needs p4j_coralsrc and p4j_coralsrc_shared DONE (E1)
-  gpu phase4j_seeds/p4j_coralsrc_s1        --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s1        --inherit p4j_coralsrc        --set seed=1
-  gpu phase4j_seeds/p4j_coralsrc_s2        --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s2        --inherit p4j_coralsrc        --set seed=2
-  gpu phase4j_seeds/p4j_coralsrc_shared_s1 --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s1 --inherit p4j_coralsrc_shared --set seed=1
-  gpu phase4j_seeds/p4j_coralsrc_shared_s2 --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s2 --inherit p4j_coralsrc_shared --set seed=2
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s1        --inherit p4j_coralsrc        --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s2        --inherit p4j_coralsrc        --set seed=2
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_shared_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s1 --inherit p4j_coralsrc_shared --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_shared_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s2 --inherit p4j_coralsrc_shared --set seed=2
 
   # F2c: needs p10d_ce and p10d_coralsrc DONE (E3)
-  gpu phase10_seeds/p10d_ce_s1       --mode experiment --phase phase10_seeds --tag p10d_ce_s1       --inherit p10d_ce       --set seed=1
-  gpu phase10_seeds/p10d_ce_s2       --mode experiment --phase phase10_seeds --tag p10d_ce_s2       --inherit p10d_ce       --set seed=2
-  gpu phase10_seeds/p10d_coralsrc_s1 --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s1 --inherit p10d_coralsrc --set seed=1
-  gpu phase10_seeds/p10d_coralsrc_s2 --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s2 --inherit p10d_coralsrc --set seed=2
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_ce_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_ce_s1       --inherit p10d_ce       --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_ce_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_ce_s2       --inherit p10d_ce       --set seed=2
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s1 --inherit p10d_coralsrc --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s2 --inherit p10d_coralsrc --set seed=2
   ```
   F2d: only if FINAL (E2) is **neither** `p4j_coralsrc` **nor** `p4j_coralsrc_shared`, add its two seeds (needs E2):
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
-  gpu phase4j_seeds/${FINAL}_s1 --mode experiment --phase phase4j_seeds --tag ${FINAL}_s1 --inherit $FINAL --set seed=1
-  gpu phase4j_seeds/${FINAL}_s2 --mode experiment --phase phase4j_seeds --tag ${FINAL}_s2 --inherit $FINAL --set seed=2
+  mkdir -p outputs/phase4j_seeds   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/${FINAL}_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag ${FINAL}_s1 --inherit $FINAL --set seed=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/${FINAL}_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag ${FINAL}_s2 --inherit $FINAL --set seed=2
   ```
 - [ ] **F3 (mandatory, CPU, seconds) — seed tables**, when every F1 / F2 run is DONE:
   ```bash
@@ -455,23 +365,25 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
 
 ## G. Mechanism and secondary arms
 
-- [ ] **G1 (mandatory) — data volume vs source diversity, PARALLEL** (≈ 9.4 GPU h). Wave 5 (needs only C2):
+- [ ] **G1 (mandatory) — data volume vs source diversity**: `p3c_dose5k`, `p3c_dose2k` are already trained;
+  they are evaluated in F1. Nothing to run here.
+- [ ] *G2 (optional) — SSL dose point*: `p3a_ssl60` is already trained; evaluated in F1. Nothing to run here.
+- [ ] *G2b (optional, recommended) — joint training + EyePACS-supervised pretraining* (≈ 4.7 GPU h, no dependency).
+  Under the amended endpoint phase 3a would adopt `p3a_sup`, while the lineage (`p3b_joint`) was built without it;
+  this one arm answers "why not both?". Report-only (`winner_eligible=false`), own folder, lineage unchanged:
   ```bash
-  gpu phase3c_dose/p3c_dose5k --mode experiment --phase phase3c_dose --tag p3c_dose5k --inherit p3b_joint --set eyepacs_max=5000
-  gpu phase3c_dose/p3c_dose2k --mode experiment --phase phase3c_dose --tag p3c_dose2k --inherit p3b_joint --set eyepacs_max=2000
-  ```
-- [ ] *G2 (optional) — SSL dose point* (≈ 2.8 GPU h) for the SSL negative-control paragraph. Wave 5:
-  ```bash
-  gpu phase3c_ssl/p3a_ssl60 --mode experiment --phase phase3c_ssl --tag p3a_ssl60 --inherit p2b_none --set pretrain_path=checkpoints/pretrain/ssl_maxvit/ssl_backbone_epoch60.pth
+  mkdir -p outputs/phase3c_jointsup
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase3c_jointsup/p3c_joint_sup.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase3c_jointsup --tag p3c_joint_sup --inherit p3b_joint --set pretrain_path=checkpoints/pretrain/eyepacs_sup_v1.pth winner_eligible=false
   ```
 - [ ] *G3 (optional, recommended) — phase 5 architectures on the new lineage* (≈ 12 GPU h). Reviewers ask whether
   the effect depends on the backbone. Needs E2. The two training lines are PARALLEL; the ensemble needs both DONE;
   the selection needs the ensemble DONE:
   ```bash
-  gpu phase5_architecture/p5_convnextv2 --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4j_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k_384 pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
-  gpu phase5_architecture/p5_effnetv2   --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4j_label_loss --set backbone=efficientnetv2_rw_m.agc_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+  mkdir -p outputs/phase5_architecture   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_convnextv2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4j_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k_384 pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_effnetv2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4j_label_loss --set backbone=efficientnetv2_rw_m.agc_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
   # SEQUENTIAL after both are DONE:
-  gpu phase5_architecture/p5_hetero_ens --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4j_label_loss,p5_convnextv2,p5_effnetv2
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_hetero_ens.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4j_label_loss,p5_convnextv2,p5_effnetv2
   env/bin/python main.py --mode phase_select --phase phase5_architecture --reference @phase4j_label_loss
   ```
   If a ConvNeXt run goes out of memory at 512 px, re-run only that line with `img_size=384` added to its `--set`.
@@ -482,22 +394,23 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   (PARALLEL, no other dependency; check the current RETFound README for the fine-tuning recipe before the run):
   ```bash
   ls -lh checkpoints/pretrain/RETFound_mae_natureCFP.pth
-  gpu phase5_architecture/p5_retfound       --mode experiment --phase phase5_architecture --tag p5_retfound       --inherit p2b_none  --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
-  gpu phase5_architecture/p5_retfound_joint --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
+  mkdir -p outputs/phase5_architecture   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_retfound.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_retfound       --inherit p2b_none  --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_retfound_joint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
   ```
   (CAM-based XAI is not available for this ViT baseline; it is a performance baseline only.)
 - [ ] *G4 (optional) — phase 6 domain generalisation, 4 cells, PARALLEL* (≈ 16 GPU h). The first three need E2;
   `p6_amp_nojoint` has no dependency (wave 5). Report-only selection after all four are DONE:
   ```bash
-  gpu phase6_domain_gen/p6_amp         --mode experiment --phase phase6_domain_gen --tag p6_amp         --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
-  gpu phase6_domain_gen/p6_ms          --mode experiment --phase phase6_domain_gen --tag p6_ms          --inherit @phase4j_label_loss --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
-  gpu phase6_domain_gen/p6_amp_ms      --mode experiment --phase phase6_domain_gen --tag p6_amp_ms      --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
-  gpu phase6_domain_gen/p6_amp_nojoint --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none           --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+  mkdir -p outputs/phase6_domain_gen   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp         --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms          --inherit @phase4j_label_loss --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms      --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_nojoint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none           --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
   # SEQUENTIAL after all four are DONE:
   env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference @phase4j_label_loss --set select_report_only=true
   ```
-- Not run any more: phase 7 (feature balance, code removed), the 4-way TTA grid, `p3c_cnext_ref`,
-  `p3c_effnet_ref` (superseded by G3), wavelet gate, `p4_aasl` / `p4_aasl_emd` on the old lineage.
+- Not run any more: phase 7 (feature balance, code removed), the 4-way TTA grid, wavelet gate, `p4_aasl` / `p4_aasl_emd` on the old lineage.
 - [ ] Back up (command in 0.2).
 
 ## H. Final model, report, XAI
@@ -509,17 +422,19 @@ done; H3 must be the very last computation.
   works on saved predictions (CPU). Independent of each other:
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
-  gpu phase8_inference/p8_tta_flip --mode inference_experiment --phase phase8_inference --tag p8_tta_flip --base $FINAL --set tta=flip
+  mkdir -p outputs/phase8_inference   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip --base $FINAL --set tta=flip
   env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal --base $FINAL --set conformal_alpha=0.10
   ```
 - [ ] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
   GPU, the four jobs are PARALLEL:
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
-  gpu xai/${FINAL}_grid_test     --mode xai --tag $FINAL --set xai_split=test
-  gpu xai/${FINAL}_grid_messidor --mode xai --tag $FINAL --set xai_split=messidor_test xai_top_k=1
-  gpu xai/${FINAL}_loc           --mode xai_localization --tag $FINAL
-  gpu xai/p2a_plain_loc          --mode xai_localization --tag p2a_plain
+  mkdir -p outputs/xai   # the -l log paths go in here
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/xai/${FINAL}_grid_test.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode xai --tag $FINAL --set xai_split=test
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/xai/${FINAL}_grid_messidor.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode xai --tag $FINAL --set xai_split=messidor_test xai_top_k=1
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/xai/${FINAL}_loc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode xai_localization --tag $FINAL
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/xai/p2a_plain_loc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode xai_localization --tag p2a_plain
   ```
   Output: `results/<phase>/<tag>/xai/` (grid + `xai_localization.csv`), copied grid in `results/figures/xai_grid.*`.
 - [ ] **H3 (mandatory, CPU) — tables and figures**, SEQUENTIAL, after every run you want in the paper is DONE
@@ -552,7 +467,7 @@ done; H3 must be the very last computation.
 | `phase_select ...: DEV predictions missing for [...]` | C4 (or `--mode evaluate --tag X`) not finished for the listed tags |
 | `AASL soft labels for fold k not found` | wait until `softlabels/sl_p4/outer0..4.npz` all exist |
 | `coral / coral_src heads ... set mix_prob=0` | ordinal heads cannot use Mixup/CutMix (the lineage already has `mix_prob=0`) |
-| `ensemble member X has no predictions for <set>` | `gpu eval_X --mode evaluate --tag X` first |
+| `ensemble member X has no predictions for <set>` | run `--mode evaluate --tag X` first (same `phd run` line as in C4) |
 | out of memory | add `batch_size=8 grad_accum=2 grad_checkpointing=true` to that line's `--set` and re-submit (finished folds are skipped) |
 | `@phaseX` / `WINNER.txt` not found | run `phase_select` for that phase first |
 | `phase_select` raises about test data | expected guard; do not bypass it |
@@ -572,5 +487,5 @@ Never write `WINNER.txt` by hand, never run `make_splits` again on the server, n
 ---
 
 ## Total GPU budget of this list
-Mandatory: C4 ≈ 7, E1 ≈ 28, E3 ≈ 28, F1 ≈ 10, F2 ≈ 44, G1 ≈ 9.4, H ≈ 2 → **≈ 128 GPU h**
-(≈ 1.5–2 days of wall clock at 4–6 parallel slots). Optional G2–G4: ≈ 35 GPU h. The SSL stop (A1) saves 52.
+Mandatory: C4 ≈ 7, E1 ≈ 28, E3 ≈ 28, F1 ≈ 2 (evaluation only), F2 ≈ 44, H ≈ 2 → **≈ 111 GPU h**
+(≈ 1.5–2 days of wall clock at 4–6 parallel slots). Optional G2b–G4: ≈ 37 GPU h. The SSL stop (A1) saves 52.
