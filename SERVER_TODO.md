@@ -230,6 +230,46 @@ master_table: Compiled 44 experiments into results/master/
   DEV: `qwk_gain`, `mild_recall_argmax → mild_recall_devcal`, `pred_nodr_argmax → pred_nodr_devcal`, next to
   `test_bin_auroc`) is for reporting only. Whatever the outcome, both tables go into the paper (pre-declared here).
 
+  ### Result:
+        tag  dataset  n_dev  devcf_qwk_argmax  devcf_qwk_refit  devcf_qwk_gain  devcf_gain_lo  devcf_gain_hi
+ p2b_none messidor    349             0.662            0.751           0.090          0.031          0.133
+ p2b_none      ddr   2445             0.736            0.841           0.105          0.079          0.124
+ p2b_none deepdrid    399             0.767            0.819           0.052          0.002          0.088
+ p2b_none    idrid    413             0.816            0.858           0.042          0.011          0.074
+  p3a_sup messidor    349             0.702            0.775           0.073          0.036          0.115
+  p3a_sup      ddr   2445             0.783            0.886           0.103          0.084          0.118
+  p3a_sup deepdrid    399             0.788            0.852           0.064          0.028          0.096
+  p3a_sup    idrid    413             0.809            0.887           0.078          0.054          0.101
+p3b_joint messidor    349             0.765            0.793           0.028         -0.017          0.061
+p3b_joint      ddr   2445             0.838            0.884           0.047          0.032          0.062
+p3b_joint deepdrid    399             0.849            0.868           0.019         -0.013          0.049
+p3b_joint    idrid    413             0.830            0.889           0.059          0.040          0.077
+ p4_coral messidor    349             0.690            0.768           0.078          0.043          0.120
+ p4_coral      ddr   2445             0.755            0.857           0.102          0.083          0.124
+ p4_coral deepdrid    399             0.781            0.839           0.058          0.014          0.086
+ p4_coral    idrid    413             0.833            0.881           0.049          0.026          0.074
+
+      tag  dataset  n_test  test_bin_auroc  qwk_argmax  qwk_devcal  qwk_gain  qwk_gain_ci_lo  qwk_gain_ci_hi  mild_recall_argmax  mild_recall_devcal  pred_nodr_argmax  pred_nodr_devcal  true_nodr_share
+ p2b_none messidor    1395           0.936       0.698       0.792     0.094           0.069           0.118               0.104               0.335            74.265            56.559           58.423
+ p2b_none      ddr    3638           0.926       0.608       0.775     0.166           0.148           0.184               0.220               0.231            67.922            55.607           49.093
+ p2b_none deepdrid     399           0.964       0.833       0.867     0.034           0.011           0.057               0.457               0.400            52.882            50.125           50.125
+ p2b_none    idrid     103           0.899       0.676       0.730     0.054          -0.026           0.133               0.800               0.400            12.621            27.184           33.010
+  p3a_sup messidor    1395           0.946       0.741       0.811     0.070           0.050           0.091               0.283               0.528            68.172            54.050           58.423
+  p3a_sup      ddr    3638           0.943       0.669       0.828     0.158           0.140           0.176               0.328               0.339            65.943            48.955           49.093
+  p3a_sup deepdrid     399           0.981       0.861       0.890     0.028           0.007           0.051               0.543               0.600            52.632            44.361           50.125
+  p3a_sup    idrid     103           0.930       0.682       0.798     0.115           0.043           0.191               0.600               0.200            21.359            33.010           33.010
+p3b_joint messidor    1395           0.915       0.802       0.823     0.021          -0.001           0.044               0.330               0.250            68.100            62.151           58.423
+p3b_joint      ddr    3638           0.906       0.731       0.814     0.082           0.067           0.098               0.446               0.172            63.579            54.233           49.093
+p3b_joint deepdrid     399           0.986       0.908       0.909     0.001          -0.017           0.018               0.543               0.571            51.128            46.867           50.125
+p3b_joint    idrid     103           0.927       0.710       0.781     0.072           0.002           0.147               0.800               0.200            20.388            33.010           33.010
+ p4_coral messidor    1395           0.927       0.716       0.806     0.090           0.066           0.113               0.137               0.425            73.333            55.556           58.423
+ p4_coral      ddr    3638           0.891       0.611       0.790     0.178           0.158           0.198               0.129               0.285            70.533            49.258           49.093
+ p4_coral deepdrid     399           0.961       0.828       0.858     0.030           0.004           0.058               0.371               0.429            58.145            45.865           50.125
+ p4_coral    idrid     103           0.914       0.655       0.762     0.107           0.035           0.185               0.800               0.400            15.534            30.097           33.010
+
+written: results/master/cutpoint_diagnostic.csv
+
+
 ## D. Re-issue the selection under the amended endpoint (written before any phase-4j result exists)
 
 All of D is CPU and takes minutes. Needs C4 (the amended endpoint refuses to run if a DEV prediction file of
