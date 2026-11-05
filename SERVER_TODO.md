@@ -187,7 +187,7 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   ```bash
   env/bin/python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
   ```
-- [🔃] **C4 (mandatory) — evaluate every finished tag on every set** (GPU, ≈ 0.25 h per tag, ≈ 7 GPU h in total).
+- [✅] **C4 (mandatory) — evaluate every finished tag on every set** (GPU, ≈ 0.25 h per tag, ≈ 7 GPU h in total).
   Needs C2. **PARALLEL**: three jobs on disjoint tag lists (≈ 2.5 h wall clock):
   ```bash
   mkdir -p outputs/c4   # the -l paths write into this folder, create it first
@@ -203,7 +203,7 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   cat results/master/evaluate_all_report.csv            # every row must say ok (zoo rows say skipped)
   ```
   A row that is not `ok`: re-run only that tag, e.g. `gpu c4/eval_p3b_joint --mode evaluate --tag p3b_joint`.
-- [ ] **C4b (mandatory, CPU, seconds) — interim seed and master tables** (needs C4). They now hold every finished
+- [⛔] **C4b (mandatory, CPU, seconds) — interim seed and master tables** (needs C4). They now hold every finished
   run, the A2 seed runs included, on every internal and external set:
   ```bash
   env/bin/python main.py --mode seed_summary --reference p3b_joint     # results/master/seed_variance.csv + seed_compare.csv
@@ -211,7 +211,16 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   ```
   These are interim tables: they are overwritten in F3 and H3, so it does not matter how often you run them.
   Run them only after C4: before C4 the DDR / DeepDRiD / IDRiD columns are empty.
-- [ ] **C5 (mandatory, CPU, seconds) — cut-point diagnostic**, the pre-test of the new component (needs C4):
+
+  ### Outputs:
+  2026-11-05 16:02:43 | INFO | Mode: seed_summary  Tag: default  Phase: None
+/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/env/lib/python3.9/site-packages/scipy/stats/_axis_nan_policy.py:531: RuntimeWarning: Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.
+  res = hypotest_fun_out(*samples, **kwds)
+seed_summary: 26 configuration groups -> results/master/seed_variance.csv; comparisons vs p3b_joint -> results/master/seed_compare.csv
+2026-11-05 16:02:50 | INFO | Mode: master_table  Tag: default  Phase: None
+master_table: Compiled 44 experiments into results/master/
+
+- [✅] **C5 (mandatory, CPU, seconds) — cut-point diagnostic**, the pre-test of the new component (needs C4):
   ```bash
   env/bin/python tools/cutpoint_diagnostic.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
   ```
