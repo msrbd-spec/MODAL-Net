@@ -143,12 +143,12 @@ With 4–6 GPU slots this is ≈ 1.5–2 days of GPU wall clock after wave 4. Th
   The DeepDRiD test folder must be called `Online-Challenge1_2-Evaluation` (as on the Mac); paths are in
   `configs/config.yaml -> paths`. A `datasets/DDR-dataset/.cache/` folder (Hugging Face `.lock` / `.metadata`
   files) is never read by the code; it can be deleted (`SERVER_CLEANUP.md` §1).
-- [❌ - Failed] **B4 (mandatory) — tests** (CPU, ≈ 5–10 min; they run in temporary folders and cannot touch real files).
+- [✅] **B4 (mandatory) — tests** (CPU, ≈ 5–10 min; they run in temporary folders and cannot touch real files).
   The first run failed only because two old server-only test files (`tests/test_selection_fallbacks.py`,
   `tests/test_zz_guard_check.py`) were written for the old code. Both are rewritten on the Mac.
-  - [ ] **B4a — copy the two rewritten test files (and the updated documents)**: run the B1 `rsync` line again
+  - [✅] **B4a — copy the two rewritten test files (and the updated documents)**: run the B1 `rsync` line again
     on the Mac (it only sends what changed).
-  - [ ] **B4b — run the tests again** (on the server):
+  - [✅] **B4b — run the tests again** (on the server):
     ```bash
     env/bin/python -m pytest -q -p no:warnings          # expected: 80 passed
     ```
@@ -162,13 +162,13 @@ With 4–6 GPU slots this is ≈ 1.5–2 days of GPU wall clock after wave 4. Th
 
 C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 is done.
 
-- [🔃 - In Progress] **C1 (mandatory) — duplicate audit of DDR / DeepDRiD / IDRiD** (CPU, ≈ 1–2 h; re-uses the cached hashes
+- [✅] **C1 (mandatory) — duplicate audit of DDR / DeepDRiD / IDRiD** (CPU, ≈ 1–2 h; re-uses the cached hashes
   of the first audit, so EyePACS is not re-hashed):
   ```bash
   env/bin/python main.py --mode dedup_external
   ```
   Finished when the command returns without an error; its output is under `results/phase0_protocol/audit/`.
-- [ ] **C2 (mandatory) — freeze the splits** (CPU, minutes; writes `splits/external/*.csv`, `exclusions.csv`,
+- [✅] **C2 (mandatory) — freeze the splits** (CPU, minutes; writes `splits/external/*.csv`, `exclusions.csv`,
   `manifest.json`). Needs C1.
   ```bash
   env/bin/python main.py --mode make_external_splits
@@ -182,7 +182,7 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   `env/bin/python main.py --mode make_external_splits --set dedup_exclude_max=2`, and keep that value for the
   whole project. **Do C2 only once and before any C4 / training job**: every number of the paper is computed
   on these frozen splits.
-- [ ] **C3 (mandatory) — leakage report** for the paper (CPU, minutes; APTOS test is never filtered, state the
+- [🔃] **C3 (mandatory) — leakage report** for the paper (CPU, minutes; APTOS test is never filtered, state the
   count). Needs C2. Can run while C4 runs.
   ```bash
   env/bin/python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
