@@ -136,7 +136,7 @@ evaluate_only: []            # evaluate_all mode: restrict to these tags (empty 
 bootstrap_ci: 1000           # resamples for the per-metric 95% CIs written to metrics_long.csv (0 = off)
 fewshot_n: [10, 25, 50, 100] # labelled target images used to refit the 4 cut-points (few-shot curve)
 fewshot_draws: 20            # random draws per few-shot size
-dedup_exclude_max: 4         # pHash Hamming distance at or below which an evaluation image that duplicates a training-source image is excluded
+dedup_exclude_max: 2         # Duplicate exclusion threshold fixed at Hamming ≤ 2 on 2026-11-05, after visual review of 154 candidate pairs
 
 # Selection (phase_select)
 select_endpoint: amended     # amended = mean external-DEV QWK primary, APTOS OOF non-inferiority; original = pre-registered OOF rule
