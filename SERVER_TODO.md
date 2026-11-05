@@ -182,12 +182,12 @@ C1 → C2 are **SEQUENTIAL** (CPU). C3 and C4 may run at the same time once C2 i
   `env/bin/python main.py --mode make_external_splits --set dedup_exclude_max=2`, and keep that value for the
   whole project. **Do C2 only once and before any C4 / training job**: every number of the paper is computed
   on these frozen splits.
-- [🔃] **C3 (mandatory) — leakage report** for the paper (CPU, minutes; APTOS test is never filtered, state the
+- [✅] **C3 (mandatory) — leakage report** for the paper (CPU, minutes; APTOS test is never filtered, state the
   count). Needs C2. Can run while C4 runs.
   ```bash
   env/bin/python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
   ```
-- [ ] **C4 (mandatory) — evaluate every finished tag on every set** (GPU, ≈ 0.25 h per tag, ≈ 7 GPU h in total).
+- [🔃] **C4 (mandatory) — evaluate every finished tag on every set** (GPU, ≈ 0.25 h per tag, ≈ 7 GPU h in total).
   Needs C2. **PARALLEL**: three jobs on disjoint tag lists (≈ 2.5 h wall clock):
   ```bash
   gpu c4/eval_part1 --mode evaluate_all --set 'evaluate_only=[p2a_plain,p2a_reg,p2a_mix,p2a_osmooth,p2a_ema,p2a_aug,p2a_sam,p2a_bundle]'
