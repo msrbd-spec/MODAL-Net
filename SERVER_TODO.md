@@ -258,7 +258,7 @@ E1 and E3 are independent (both inherit `p3b_joint`): submit all twelve jobs tog
 plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself on all sets with all metrics at the end
 (no separate evaluate step needed).
 
-- [🔃] **E1 (mandatory) — phase 4j, six arms, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2 = `p3b_joint`.
+- [✅] **E1 (mandatory) — phase 4j, six arms, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2 = `p3b_joint`.
   ```bash
   mkdir -p outputs/phase4j_label_loss   # the -l paths go in here, create first
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_label_loss/p4j_coral.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_label_loss --tag p4j_coral --inherit p3b_joint --set loss=coral head_type=coral
@@ -277,7 +277,7 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   (`sl_p4` soft labels were made on the same APTOS folds; they are re-used on purpose. `coral_src` = one
   severity score + ordered cut-points; `src_offsets=true` adds one cut-point offset vector per training source,
   tied by `src_offset_l2`; `src_offsets=false` is the same head without offsets, the ablation that isolates them.)
-- [ ] **E2 (mandatory, CPU, seconds) — phase 4j selection**. SEQUENTIAL: only when `st` shows all six E1 runs DONE.
+- [✅] **E2 (mandatory, CPU, seconds) — phase 4j selection**. SEQUENTIAL: only when `st` shows all six E1 runs DONE.
   ```bash
   env/bin/python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint
   env/bin/python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint --set select_endpoint=original select_report_only=true
@@ -287,7 +287,7 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt); echo $FINAL
   ```
-- [ ] **E3 (mandatory) — phase 10, multi-source leave-sites-out, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2.
+- [🔃] **E3 (mandatory) — phase 10, multi-source leave-sites-out, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2.
   This is the multi-site test of the cut-point idea: each arm is scored only on the datasets it never saw.
   ```bash
   # sources APTOS + EyePACS + DDR  -> held out: Messidor-2, DeepDRiD, IDRiD
@@ -314,7 +314,7 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
 
 Seed replicates are grouped automatically by configuration (any folder, any tag name).
 
-- [ ] **F1 (mandatory) — evaluate the eight runs that are already trained (old code) but were not in the C4 lists**
+- [🔃] **F1 (mandatory) — evaluate the eight runs that are already trained (old code) but were not in the C4 lists**
   (GPU, one job, ≈ 2 h). `p3c_joint_s2`, `p3c_coral_s2`, `p3c_sup_s2` (seeds), `p3c_dose5k`, `p3c_dose2k` (G1),
   `p3a_ssl60` (G2) and `p3c_cnext_ref`, `p3c_effnet_ref` (backbone check on the old lineage) finished before the
   new code; they only need the new evaluation sets. **Do not retrain them.** Can start now.
@@ -328,15 +328,15 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   ```
   (If the old F1 / G1 / G2 `--mode experiment` lines were already submitted, let them finish: a re-run skips the
   finished folds and only evaluates, so the result is the same.)
-- [ ] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
+- [] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
   Three groups with different start conditions:
   ```bash
-  # F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
+  # 🔃 F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
   mkdir -p outputs/phase9_final outputs/phase4j_seeds outputs/phase10_seeds   # the -l log paths go in here
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s1 --inherit p2a_plain --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s2 --inherit p2a_plain --set seed=2
 
-  # F2b: needs p4j_coralsrc and p4j_coralsrc_shared DONE (E1)
+  # 🔃 F2b: needs p4j_coralsrc and p4j_coralsrc_shared DONE (E1)
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s1        --inherit p4j_coralsrc        --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s2        --inherit p4j_coralsrc        --set seed=2
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_shared_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s1 --inherit p4j_coralsrc_shared --set seed=1
