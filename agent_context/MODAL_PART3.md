@@ -116,7 +116,7 @@ Status of the items of this prompt after the revision:
 - STEP 5 (git hygiene): unchanged. Important: splits/*.json are tracked by .gitignore, and the old test-suite had overwritten the Mac copies with
   synthetic ids (24 / 96 Messidor ids); never sync splits/ or results/ from the Mac to the server (SERVER_TODO.md B1). The test-suite now runs
   every test in a temporary folder (tests/conftest.py).
-- STEP 6 (checks): `pytest -q` -> 80 passed (CPU, ~5-10 min), including the end-to-end synthetic pipeline tests/test_pipeline.py.
+- STEP 6 (checks): `pytest -q` -> 84 passed (CPU, ~5-10 min), including the end-to-end synthetic pipeline tests/test_pipeline.py.
 New files of the revision: src/data/external.py, src/evaluation/evaluate.py, src/evaluation/cutpoints.py, src/xai/localization.py,
 tools/cutpoint_diagnostic.py, tools/leakage_check.py, tools/dup_review.py, tests/synth.py, tests/test_pipeline.py,
 tests/test_external_and_config.py, SERVER_TODO.md, SERVER_CLEANUP.md. Removed: src/training/feature_balance.py, src/models/wavelet_gate.py,

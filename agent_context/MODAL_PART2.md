@@ -282,7 +282,7 @@ S14. TESTS AND ACCEPTANCE (tests/; run before reporting)
   report-only) -> master_table -> seed grouping -> report from real data -> cut-point and leakage tools -> XAI grid on an external set and expert-mask
   localisation. T17-T22 (tests/test_external_and_config.py): strict --set, validate_cfg, xlsx reader, official-split frames, frozen splits with
   duplicate exclusion, missing dataset fails, QWK == sklearn and cut-point recovery of a shifted scorer, AASL / mixup hard stops, zoo full1744 columns.
-  T7 report tests: without runs, no table or figure may be written. Expected: 80 passed (incl. tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
+  T7 report tests: without runs, no table or figure may be written. Expected: 84 passed (incl. tests/test_adaptation.py, tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
 
 S15. RISKS AND THINGS TO VERIFY FIRST
   - MaxViT timm id / image size / offline cache; module names (stem, stages.i) for LLRD and MixStyle hooks; whether the zoo used another MaxViT-L variant; GPU memory at 512 px (use grad_checkpointing / grad_accum).
@@ -304,6 +304,54 @@ S15. RISKS AND THINGS TO VERIFY FIRST
   - coral_src novelty is unverified until the literature check of Part 1 S2 C6; cut-point refits use target labels (DEV / few-shot) and are always
     reported as calibrated, never as zero-shot. The zero-shot number of coral_src uses the shared cut-points.
   - Re-evaluation cost: ~7,600 new external images x 5 fold models per tag (~15 GPU-min per tag at 512 px, fp32).
+S16. THEORETICAL MOTIVATION — THREE PROPOSITIONS [added 2026-11-06]
+  Status: planned for the paper section "Theoretical motivation" (statements in the main text, proofs in the supplement).
+  No experiment is needed; the empirical checks below use outputs that E4 / master_full already produce (CPU only).
+  Honesty rule: these are applications of standard results (stochastic order + Topkis, VC / growth-function bounds,
+  DKW, Gaussian empirical Bayes). They formalise the method; they are NOT claimed as a mathematical contribution.
+  The proofs must be checked by a co-author before submission.
+
+  Setting. Grades y in {0,...,K-1}, K = 5. Site d. One severity score s(x) shared by all sites (in the code: the
+  expected grade E = sum_k k P_k). Cut-points t = (t_1 < ... < t_{K-1}); rule h_t(x) = #{k : s(x) > t_k}.
+  Assumption A1 (shared score, site-specific cut-points): P_d(y > k | x) = F(s(x) - c_{d,k}) for k = 1..K-1, with F a
+  continuous strictly increasing CDF and c_{d,1} < ... < c_{d,K-1}. The distribution of s(x) may differ between
+  sites (covariate shift allowed). A1 is only approximately true; the paper says so and shows the evidence (P1 check).
+
+  Proposition 1 (cut-point shift leaves the ranking intact; the optimal site rule is a threshold rule on s).
+    (a) Any ranking metric of s (e.g. referable AUROC) is unchanged by the cut-points; a change of cut-points alone
+        changes QWK / accuracy / sensitivity but not AUROC.
+    (b) Under A1, for every per-image loss L(|yhat - y|) with L convex and non-decreasing (absolute, quadratic error),
+        the Bayes rule at site d is non-decreasing in s, i.e. it equals h_{t_d} for some t_d that depends only on c_d
+        and F. Adapting to a new site therefore needs only K-1 numbers.
+    Proof idea: P_d(y > k | s) = F(s - c_{d,k}) is increasing in s for every k, so y | s is first-order stochastically
+    increasing in s; for convex L the difference L(|a+1-y|) - L(|a-y|) is non-increasing in y, hence the expected
+    loss is submodular in (a, s) and its minimiser is non-decreasing in s (Topkis). QWK is not a per-image loss; the
+    quadratic error is its per-image analogue (stated in the paper).
+    Empirical check: external AUROC is stable while QWK moves (p2b_none -> p3b_joint: ext. mean TEST QWK 0.70 -> 0.79,
+    AUROC 0.93 -> 0.93; cutpoint_diagnostic: refit gains with unchanged AUROC).
+
+  Proposition 2 (label efficiency of cut-point adaptation).
+    (a) Few-shot labels: the threshold class {h_t} on a scalar score has growth function at most (n+1)^{K-1}. For a loss
+        bounded in [0, B], with probability >= 1 - delta the empirical-risk-minimising cut-points from n labelled target
+        images have excess risk O( B * sqrt( ((K-1) log n + log(1/delta)) / n ) ), independent of the network size.
+    (b) Grade distribution only: if the site's grade shares pi_d are known and s has a continuous distribution, the
+        quantile cut-points t_k = Q_s(pi_{d,0} + ... + pi_{d,k-1}) reproduce the shares exactly; from m unlabelled images
+        the empirical quantiles converge at rate O(sqrt(log(1/delta) / m)) (DKW). They equal the Bayes cut-points of
+        P1(b) only in the noise-free case y = h_{c_d}(x); with label noise they match the shares, not the optimum
+        (stated as a limitation).
+    Empirical check: adaptation_curve.csv, the QWK gap to the "all DEV" refit shrinks as n grows (slope of
+    log(gap) vs log(n), expected near -1/2); prevalence level vs argmax.
+
+  Proposition 3 (why shrinkage helps when n is small).
+    Empirical-Bayes view: site shifts delta_d = c_d - c0 ~ N(0, tau^2 I) across sites; the few-shot estimate
+    that_d ~ N(c_d, (sigma^2 / n) I) (asymptotic normality; heuristic for the non-smooth QWK fit). The posterior mean
+    c0 + w (that_d - c0), w = tau^2 / (tau^2 + sigma^2 / n), has MSE (K-1) w sigma^2 / n < (K-1) sigma^2 / n for every
+    n, with the largest gain at small n; w -> 1 as n grows. The penalised fit QWK - lambda ||c - c0||^2 used in E4 is
+    the analogue of this MAP estimate (lambda plays the role of sigma^2 / (n tau^2)); lambda is chosen across sites
+    (leave-one-site-out), i.e. tau is estimated from the other sites, never from the target TEST split.
+    Testable prediction: the chosen lambda decreases with n, and fewshot_shrink > fewshot mainly at n = 10, 25.
+    Empirical check: adaptation_lambda.csv (lambda vs n), adaptation_curve.csv (fewshot vs fewshot_shrink).
+
 =====================================================================
 END OF PART 2.
 =====================================================================
@@ -321,3 +369,9 @@ END OF PART 2.
 - **What changed**: S9 revised phase plan appended; S10 regenerated from commands.md (new lineage, multi-source phase 10, seeds, pruned phases 5/6,
   phase 7 removed); S11 and S12 rewritten to the real-data-only tables and figures; S13 WP14-WP19; S14 isolated tests, new pipeline and external tests;
   S15 new risks. See Part 1 S0b.
+- **Date**: 2026-11-06
+- **What changed**: S16 added (three propositions for the "Theoretical motivation" section: cut-point shift and
+  threshold-form Bayes rule, label efficiency of cut-point adaptation, shrinkage). tools/adaptation_curve.py (E4 of
+  SERVER_TODO.md) and the prior / lam / prevalence helpers in src/evaluation/cutpoints.py added; tests/test_adaptation.py.
+- **Why**: per-source offsets alone gave only noise-level gains on held-out sites (E3); the contribution is re-centred on
+  label-efficient cut-point adaptation of a shared severity score, with the endpoint pre-declared in SERVER_TODO.md E4.

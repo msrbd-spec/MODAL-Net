@@ -12,20 +12,40 @@ skipped without breaking anything later.
 **Start:** after **D3** is done. Then submit the wave-5 jobs that do not depend on the plan (F1, F2a
 `p9_base_*`, G2b, G3b), but submit **E1 / E3 only after Claude's feedback on that first report**.
 
-Before uploading, refresh the master tables on the server (CPU, ≈ 1 min):
-```bash
-env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/python main.py --mode master_table
-```
-A run counts in the report only when it is DONE (`st <tag>`); for E1 / E3 send the report after the selection
-lines of E2 / E3 have been run (they write the phase tables).
+**Every report, in this order (on the server):**
+1. Check which runs are finished (replace the tags by the ones you are waiting for):
+   ```bash
+   for t in p10q_coralsrc p9_base_s1 p9_base_s2; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
+   ```
+2. Run the CPU step that belongs to each newly finished block: E2 / E3 selection lines, E4, the E4 seed re-run.
+3. Refresh the master and seed tables (CPU, ≈ 1 min; this is also F3):
+   ```bash
+   env/bin/python main.py --mode seed_summary --reference p3b_joint && env/bin/python main.py --mode master_table
+   ```
+4. Upload these files:
 
 | # | Server path | When |
 |---|---|---|
 | 1 | `results/master/master_full.csv` | every report (every run × every set × every metric) |
-| 2 | `results/master/seed_compare.csv` | every report once seed runs exist |
-| 3 | `results/<phase>/phase_table.csv` | for each phase selected since the last report: after E2 `results/phase4j_label_loss/phase_table.csv`; after E3 `results/phase10_ms_ddr/phase_table.csv` and `results/phase10_ms_deepdrid/phase_table.csv` |
-| 4 | `results/master/cutpoint_diagnostic.csv` | first report (done) and whenever C5 is re-run |
-| 5 | `results/master/leakage_check.csv` | first report only (done) |
+| 2 | `results/master/seed_variance.csv` and `results/master/seed_compare.csv` | every report once seed runs exist |
+| 3 | `results/<phase>/phase_table.csv` | each phase selected since the last report (E2: `phase4j_label_loss`; E3: `phase10_ms_ddr`, `phase10_ms_deepdrid`) |
+| 4 | `results/master/adaptation_compare.csv`, `adaptation_curve.csv` and `adaptation_lambda.csv` | after E4 |
+| 5 | `results/master/adaptation_seeds/adaptation_compare.csv` and `.../adaptation_curve.csv` | after the E4 seed re-run (needs F2c) |
+
+**Next report (when E3, F1, F2a, F2b and F2c are finished), step by step:**
+1. Check:
+   ```bash
+   for t in p10q_coralsrc p9_base_s1 p9_base_s2 p4j_coralsrc_s1 p4j_coralsrc_s2 p4j_coralsrc_shared_s1 p4j_coralsrc_shared_s2 p10d_ce_s1 p10d_ce_s2 p10d_coralsrc_s1 p10d_coralsrc_s2; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
+   for d in results/phase*/*/; do [ -f "$d/oof.npz" ] && [ ! -f "$d/predictions_ddr_dev.npz" ] && echo "not evaluated: $d"; done   # F1: must print nothing
+   ```
+2. E3 selection: the four `phase_select` lines at the end of E3.
+3. E4: the test line, the main `adaptation_curve.py` line, then the seed re-run line (all in E4).
+4. F2d: read the rule in F2d (with the current E2 winner `p4j_coralsrc_shared` there is nothing to run).
+5. Refresh (step 3 above).
+6. Upload: `master_full.csv`, `seed_variance.csv`, `seed_compare.csv`, `phase10_ms_ddr/phase_table.csv`,
+   `phase10_ms_deepdrid/phase_table.csv`, `adaptation_compare.csv`, `adaptation_curve.csv`, `adaptation_lambda.csv`,
+   `adaptation_seeds/adaptation_compare.csv`, `adaptation_seeds/adaptation_curve.csv`
+   (and `phase4j_label_loss/phase_table.csv` if it was not sent yet).
 
 ---
 
@@ -36,17 +56,10 @@ lines of E2 / E3 have been run (they write the phase tables).
 cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
-# st <tag> [<tag> ...]   -> prints DONE when the run has finished (results/<phase>/<tag>/summary.csv exists)
-st() {
-  for t in "$@"; do
-    if ls results/phase*/"$t"/summary.csv >/dev/null 2>&1; then echo "DONE     $t"; else echo "not yet  $t"; fi
-  done
-}
 ```
 
 ### 0.2 Reading the steps
-- **SEQUENTIAL** = wait until the previous step has finished (check with `st <tag>`, the log, or the
-  check line given in the step) before you start the next one.
+- **SEQUENTIAL** = wait until the previous step has finished (check with the `for t in ...; do ls results/phase*/"$t"/summary.csv ...` line given in the step, or the log) before you start the next one.
 - **PARALLEL** = submit all lines of the block at the same time, each line is its own GPU job.
   If `phd run` keeps your terminal busy until the job ends, open one `tmux` window per line.
 - GPU steps start with `phd run ...` (one line = one scheduler job; its log goes to the `-l` file under `outputs/`).
@@ -77,7 +90,7 @@ st() {
 | 3 | C4 (re-evaluate every finished run) | GPU, 3 jobs parallel | C2 done (C3 can run at the same time) |
 | 4 | C4b → C5 → D1, D2, D3 (interim tables, diagnostic, selections) | CPU, minutes | C4 done |
 | 5 | E1 (6 jobs) + E3 (6 jobs) + F1 (1 evaluate job) + `p9_base` seeds (2) + optional G2b, G3b | GPU, all parallel | D2 says `p3b_joint` |
-| 6 | E2, E3 selections | CPU, seconds | all E1 / E3 runs DONE |
+| 6 | E2, E3 selections, then E4 (adaptation analysis) | CPU, minutes | all E1 / E3 runs DONE |
 | 7 | F2 (rest of the seeds), optional G3, G4 | GPU, parallel | E2 (FINAL known) |
 | 8 | F3, H1, H2 | CPU + GPU | F2 done (H1/H2 may start right after E2) |
 | 9 | H3 → H4 (tables, figures, backup, cleanup) | CPU | everything above done |
@@ -272,12 +285,12 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   Checks while / after they run:
   ```bash
   grep -c "AASL soft labels for fold" logs/p4j_aasl/*.log logs/p4j_aasl_emd/*.log    # each must print 5
-  st p4j_coral p4j_emd p4j_aasl p4j_aasl_emd p4j_coralsrc_shared p4j_coralsrc
+  for t in p4j_coral p4j_emd p4j_aasl p4j_aasl_emd p4j_coralsrc_shared p4j_coralsrc; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
   ```
   (`sl_p4` soft labels were made on the same APTOS folds; they are re-used on purpose. `coral_src` = one
   severity score + ordered cut-points; `src_offsets=true` adds one cut-point offset vector per training source,
   tied by `src_offset_l2`; `src_offsets=false` is the same head without offsets, the ablation that isolates them.)
-- [✅] **E2 (mandatory, CPU, seconds) — phase 4j selection**. SEQUENTIAL: only when `st` shows all six E1 runs DONE.
+- [✅] **E2 (mandatory, CPU, seconds) — phase 4j selection**. SEQUENTIAL: only when the check line shows all six E1 runs DONE.
   ```bash
   env/bin/python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint
   env/bin/python main.py --mode phase_select --phase phase4j_label_loss --reference p3b_joint --set select_endpoint=original select_report_only=true
@@ -302,12 +315,42 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   ```
   Then, SEQUENTIAL (CPU, seconds), each line only when its three runs are DONE:
   ```bash
-  st p10d_ce p10d_coralsh p10d_coralsrc p10q_ce p10q_coralsh p10q_coralsrc
+  for t in p10d_ce p10d_coralsh p10d_coralsrc p10q_ce p10q_coralsh p10q_coralsrc; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
   env/bin/python main.py --mode phase_select --phase phase10_ms_ddr      --reference p10d_ce
   env/bin/python main.py --mode phase_select --phase phase10_ms_ddr      --reference p10d_ce --set select_endpoint=original select_report_only=true
   env/bin/python main.py --mode phase_select --phase phase10_ms_deepdrid --reference p10q_ce
   env/bin/python main.py --mode phase_select --phase phase10_ms_deepdrid --reference p10q_ce --set select_endpoint=original select_report_only=true
   ```
+- [ ] **E4 (mandatory, CPU, ≈ 5–15 min) — cut-point adaptation to new sites** (no GPU, no retraining; works on
+  the saved predictions). Needs E3 finished and selected. It asks how much information from a new site is needed
+  to fix the grading, and whether the ordinal shared-score heads need less of it than CE: level 0 = nothing
+  (argmax), level 1 = the site's grade distribution only (no image labels), level 2 = n = 10/25/50/100 labelled
+  DEV images (plain refit and a refit shrunk towards the default cut-points, shrinkage strength chosen on the
+  OTHER held-out sites' DEV splits), level 3 = the whole DEV split. Only held-out sites are used; cut-points are
+  fitted on DEV only, TEST is only reported.
+  First bring the new code to the server (on the Mac: the B1 `rsync` line again; it sends `tools/adaptation_curve.py`,
+  `src/evaluation/cutpoints.py`, `tests/test_adaptation.py`), then on the server:
+  ```bash
+  env/bin/python -m pytest -q -p no:warnings tests/test_adaptation.py          # expected: 4 passed
+  env/bin/python tools/adaptation_curve.py --groups "p10d_ce,p10d_coralsh,p10d_coralsrc;p10q_ce,p10q_coralsh,p10q_coralsrc;p3b_joint,p4j_coral,p4j_coralsrc_shared,p4j_coralsrc"
+  ```
+  Output: `results/master/adaptation_curve.csv`, `adaptation_compare.csv`, `adaptation_lambda.csv`,
+  `results/figures/fig_adaptation.{png,pdf}`. The first tag of each `;`-group is the reference of that group.
+
+  **Pre-declared rule (written 2026-11-06, before any adaptation result exists; do not change it after looking):**
+  - Primary endpoint: the two phase-10 groups (truly unseen sites), level `fewshot_shrink`, n = 25, QWK, mean over
+    the held-out datasets, paired difference of each ordinal head vs the `_ce` arm of its group
+    (`adaptation_compare.csv`, `dataset = MEAN`, `metric = qwk`). "The ordinal shared score adapts better" is
+    claimed only if `diff_lo > 0` in **both** phase-10 groups, and it must hold again in the seed re-run below.
+  - Reported whatever the outcome: every level and n, mild recall and referable sensitivity (also in
+    `adaptation_compare.csv`), and the phase-4j group (in-source heads, all four external sites held out).
+  - After F2 (seeds), re-run on the seed tags into a separate folder (use the phase-10 seed tags that F2c ran):
+    ```bash
+    env/bin/python tools/adaptation_curve.py --out_dir results/master/adaptation_seeds --groups "p10d_ce_s1,p10d_coralsrc_s1;p10d_ce_s2,p10d_coralsrc_s2"
+    ```
+  - Theory (no run needed): the three propositions of `agent_context/MODAL_PART2.md` S16 are written into the paper
+    by Claude from the E4 report files (`adaptation_curve.csv`, `adaptation_compare.csv`, `adaptation_lambda.csv`).
+    Upload `results/master/adaptation_lambda.csv` with the E4 report too.
 - [ ] Back up (command in 0.2).
 
 ## F. Seeds (seed is the unit of analysis for every headline claim)
@@ -348,7 +391,13 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s1 --inherit p10d_coralsrc --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s2 --inherit p10d_coralsrc --set seed=2
   ```
-  F2d: only if FINAL (E2) is **neither** `p4j_coralsrc` **nor** `p4j_coralsrc_shared`, add its two seeds (needs E2):
+  F2d (conditional) — seeds of FINAL, only when FINAL is not already seeded in F2b. Check FINAL first:
+  ```bash
+  head -n 1 results/phase4j_label_loss/WINNER.txt
+  ```
+  - It prints `p4j_coralsrc` or `p4j_coralsrc_shared` → **skip F2d** (those seeds are already in F2b).
+    With the current E2 result (`p4j_coralsrc_shared`) F2d is skipped.
+  - It prints any other tag (e.g. `p4j_coral`) → **run the block below** (2 GPU jobs):
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
   mkdir -p outputs/phase4j_seeds   # the -l log paths go in here
@@ -357,8 +406,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   ```
 - [ ] **F3 (mandatory, CPU, seconds) — seed tables**, when every F1 / F2 run is DONE:
   ```bash
-  st p3c_joint_s2 p3c_coral_s2 p3c_sup_s2 p9_base_s1 p9_base_s2 p4j_coralsrc_s1 p4j_coralsrc_s2 \
-     p4j_coralsrc_shared_s1 p4j_coralsrc_shared_s2 p10d_ce_s1 p10d_ce_s2 p10d_coralsrc_s1 p10d_coralsrc_s2
+  for t in p3c_joint_s2 p3c_coral_s2 p3c_sup_s2 p9_base_s1 p9_base_s2 p4j_coralsrc_s1 p4j_coralsrc_s2 p4j_coralsrc_shared_s1 p4j_coralsrc_shared_s2 p10d_ce_s1 p10d_ce_s2 p10d_coralsrc_s1 p10d_coralsrc_s2; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
   env/bin/python main.py --mode seed_summary --reference p3b_joint
   ```
 - [ ] Back up (command in 0.2).

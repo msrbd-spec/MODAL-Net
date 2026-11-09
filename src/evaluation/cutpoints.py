@@ -45,20 +45,34 @@ def apply_cutpoints(E, cuts):
     return np.digitize(np.asarray(E, dtype=float), np.asarray(cuts, dtype=float)).astype(int)
 
 
-def fit_cutpoints(E, y, K=K_DEFAULT, n_grid=200, max_iter=10):
+def fit_cutpoints(E, y, K=K_DEFAULT, n_grid=200, max_iter=10, prior=None, lam=0.0):
     """Ordered cut-points c_1 < ... < c_{K-1} maximising QWK of apply_cutpoints(E, c) against y.
 
     Coordinate search over a grid of candidate values (quantiles of E plus the default half-integer
     cut-points), starting from the default cut-points 0.5, 1.5, 2.5, 3.5. Deterministic.
+
+    Shrinkage (used by the few-shot adaptation analysis): with lam > 0 the objective is
+    QWK - lam * sum_k (c_k - prior_k)^2, the search starts from `prior` (default: 0.5 .. 3.5) and the grid
+    also holds a regular grid over [0, K-1], so a cut-point can stop between the prior and the data
+    optimum. lam = 0 (the default) is exactly the unpenalised fit.
     """
     E = np.asarray(E, dtype=float)
     y = np.asarray(y, dtype=int)
-    cuts = DEFAULT_CUTS[:K - 1].copy()
+    prior = DEFAULT_CUTS[:K - 1].copy() if prior is None else np.asarray(prior, dtype=float).copy()
+    lam = float(lam)
+    cuts = (prior if lam > 0 else DEFAULT_CUTS[:K - 1]).copy()
     if len(np.unique(y)) < 2 or len(y) < 2:
         return cuts
-    grid = np.unique(np.concatenate([np.quantile(E, np.linspace(0, 1, n_grid)), DEFAULT_CUTS[:K - 1],
-                                     [E.min() - 1e-6, E.max() + 1e-6]]))
-    best = qwk_from_pred(y, apply_cutpoints(E, cuts), K)
+    parts = [np.quantile(E, np.linspace(0, 1, n_grid)), DEFAULT_CUTS[:K - 1], [E.min() - 1e-6, E.max() + 1e-6]]
+    if lam > 0:
+        parts += [prior, np.linspace(0.0, K - 1.0, 8 * (K - 1) + 1)]
+    grid = np.unique(np.concatenate(parts))
+
+    def objective(c):
+        q = qwk_from_pred(y, apply_cutpoints(E, c), K)
+        return q - lam * float(((c - prior) ** 2).sum()) if lam > 0 else q
+
+    best = objective(cuts)
     for _ in range(max_iter):
         improved = False
         for j in range(K - 1):
@@ -68,11 +82,28 @@ def fit_cutpoints(E, y, K=K_DEFAULT, n_grid=200, max_iter=10):
             for v in cand:
                 trial = cuts.copy()
                 trial[j] = v
-                q = qwk_from_pred(y, apply_cutpoints(E, trial), K)
+                q = objective(trial)
                 if q > best + 1e-12:
                     best, cuts, improved = q, trial, True
         if not improved:
             break
+    return cuts
+
+
+def prevalence_cutpoints(E_unlabelled, proportions, K=K_DEFAULT):
+    """Label-free cut-points: the predicted grade shares on unlabelled images match known grade shares.
+
+    `proportions` = the site's grade distribution (length K, sums to 1; only counts are needed, no image
+    labels). c_k = quantile of E at the cumulative share of grades <= k. Strictly increasing.
+    """
+    E = np.asarray(E_unlabelled, dtype=float)
+    p = np.asarray(proportions, dtype=float)
+    p = p / p.sum()
+    cum = np.clip(np.cumsum(p)[:K - 1], 0.0, 1.0)
+    cuts = np.quantile(E, cum)
+    for k in range(1, K - 1):                         # ties (empty grades) -> keep the order strict
+        if cuts[k] <= cuts[k - 1]:
+            cuts[k] = cuts[k - 1] + 1e-6
     return cuts
 
 

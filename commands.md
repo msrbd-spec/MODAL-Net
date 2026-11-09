@@ -119,6 +119,12 @@ Cut-point diagnostic on saved predictions (CPU, seconds; works with the old Mess
 python tools/cutpoint_diagnostic.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
 ```
 
+Cut-point adaptation to new sites (CPU, minutes; held-out sites only; levels: argmax, grade distribution only,
+n labelled DEV images with / without shrinkage, all DEV; pre-declared endpoint in `SERVER_TODO.md` E4):
+```bash
+python tools/adaptation_curve.py --groups "p10d_ce,p10d_coralsh,p10d_coralsrc;p10q_ce,p10q_coralsh,p10q_coralsrc;p3b_joint,p4j_coral,p4j_coralsrc_shared,p4j_coralsrc"
+```
+
 ---
 
 ## 5. Selection (`phase_select`)
