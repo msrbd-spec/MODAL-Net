@@ -300,7 +300,7 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt); echo $FINAL
   ```
-- [🔃] **E3 (mandatory) — phase 10, multi-source leave-sites-out, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2.
+- [✅] **E3 (mandatory) — phase 10, multi-source leave-sites-out, PARALLEL** (≈ 6 × 4.7 = 28 GPU h). Needs D2.
   This is the multi-site test of the cut-point idea: each arm is scored only on the datasets it never saw.
   ```bash
   # sources APTOS + EyePACS + DDR  -> held out: Messidor-2, DeepDRiD, IDRiD
@@ -321,7 +321,7 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   env/bin/python main.py --mode phase_select --phase phase10_ms_deepdrid --reference p10q_ce
   env/bin/python main.py --mode phase_select --phase phase10_ms_deepdrid --reference p10q_ce --set select_endpoint=original select_report_only=true
   ```
-- [ ] **E4 (mandatory, CPU, ≈ 5–15 min) — cut-point adaptation to new sites** (no GPU, no retraining; works on
+- [✅] **E4 (mandatory, CPU, ≈ 5–15 min) — cut-point adaptation to new sites** (no GPU, no retraining; works on
   the saved predictions). Needs E3 finished and selected. It asks how much information from a new site is needed
   to fix the grading, and whether the ordinal shared-score heads need less of it than CE: level 0 = nothing
   (argmax), level 1 = the site's grade distribution only (no image labels), level 2 = n = 10/25/50/100 labelled
@@ -351,13 +351,13 @@ plus the wave-5 jobs of F1 / F2a / G2b / G3b below. Every run evaluates itself o
   - Theory (no run needed): the three propositions of `agent_context/MODAL_PART2.md` S16 are written into the paper
     by Claude from the E4 report files (`adaptation_curve.csv`, `adaptation_compare.csv`, `adaptation_lambda.csv`).
     Upload `results/master/adaptation_lambda.csv` with the E4 report too.
-- [ ] Back up (command in 0.2).
+- [✅] Back up (command in 0.2).
 
 ## F. Seeds (seed is the unit of analysis for every headline claim)
 
 Seed replicates are grouped automatically by configuration (any folder, any tag name).
 
-- [🔃] **F1 (mandatory) — evaluate the eight runs that are already trained (old code) but were not in the C4 lists**
+- [✅] **F1 (mandatory) — evaluate the eight runs that are already trained (old code) but were not in the C4 lists**
   (GPU, one job, ≈ 2 h). `p3c_joint_s2`, `p3c_coral_s2`, `p3c_sup_s2` (seeds), `p3c_dose5k`, `p3c_dose2k` (G1),
   `p3a_ssl60` (G2) and `p3c_cnext_ref`, `p3c_effnet_ref` (backbone check on the old lineage) finished before the
   new code; they only need the new evaluation sets. **Do not retrain them.** Can start now.
@@ -374,24 +374,24 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
 - [] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
   Three groups with different start conditions:
   ```bash
-  # 🔃 F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
+  # ✅ F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
   mkdir -p outputs/phase9_final outputs/phase4j_seeds outputs/phase10_seeds   # the -l log paths go in here
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s1 --inherit p2a_plain --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase9_final/p9_base_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase9_final --tag p9_base_s2 --inherit p2a_plain --set seed=2
 
-  # 🔃 F2b: needs p4j_coralsrc and p4j_coralsrc_shared DONE (E1)
+  # ✅ F2b: needs p4j_coralsrc and p4j_coralsrc_shared DONE (E1)
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s1        --inherit p4j_coralsrc        --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_s2        --inherit p4j_coralsrc        --set seed=2
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_shared_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s1 --inherit p4j_coralsrc_shared --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase4j_seeds/p4j_coralsrc_shared_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase4j_seeds --tag p4j_coralsrc_shared_s2 --inherit p4j_coralsrc_shared --set seed=2
 
-  # F2c: needs p10d_ce and p10d_coralsrc DONE (E3)
+  # 🔃 F2c: needs p10d_ce and p10d_coralsrc DONE (E3)
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_ce_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_ce_s1       --inherit p10d_ce       --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_ce_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_ce_s2       --inherit p10d_ce       --set seed=2
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s1.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s1 --inherit p10d_coralsrc --set seed=1
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase10_seeds/p10d_coralsrc_s2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase10_seeds --tag p10d_coralsrc_s2 --inherit p10d_coralsrc --set seed=2
   ```
-  F2d (conditional) — seeds of FINAL, only when FINAL is not already seeded in F2b. Check FINAL first:
+  [Skipped] F2d (conditional) — seeds of FINAL, only when FINAL is not already seeded in F2b. Check FINAL first:
   ```bash
   head -n 1 results/phase4j_label_loss/WINNER.txt
   ```
@@ -413,10 +413,10 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
 
 ## G. Mechanism and secondary arms
 
-- [ ] **G1 (mandatory) — data volume vs source diversity**: `p3c_dose5k`, `p3c_dose2k` are already trained;
+- [Skipped] **G1 (mandatory) — data volume vs source diversity**: `p3c_dose5k`, `p3c_dose2k` are already trained;
   they are evaluated in F1. Nothing to run here.
-- [ ] *G2 (optional) — SSL dose point*: `p3a_ssl60` is already trained; evaluated in F1. Nothing to run here.
-- [ ] *G2b (optional, recommended) — joint training + EyePACS-supervised pretraining* (≈ 4.7 GPU h, no dependency).
+- [Skipped] *G2 (optional) — SSL dose point*: `p3a_ssl60` is already trained; evaluated in F1. Nothing to run here.
+- [🔃] *G2b (optional, recommended) — joint training + EyePACS-supervised pretraining* (≈ 4.7 GPU h, no dependency).
   Under the amended endpoint phase 3a would adopt `p3a_sup`, while the lineage (`p3b_joint`) was built without it;
   this one arm answers "why not both?". Report-only (`winner_eligible=false`), own folder, lineage unchanged:
   ```bash
@@ -428,14 +428,18 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   the selection needs the ensemble DONE:
   ```bash
   mkdir -p outputs/phase5_architecture   # the -l log paths go in here
+  # 🔃 
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_convnextv2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_convnextv2 --inherit @phase4j_label_loss --set backbone=convnextv2_large.fcmae_ft_in22k_in1k_384 pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+  # 🔃
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_effnetv2.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_effnetv2   --inherit @phase4j_label_loss --set backbone=efficientnetv2_rw_m.agc_in1k pretrain_path=null llrd=1.0 mixstyle=false winner_eligible=false
+
   # SEQUENTIAL after both are DONE:
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_hetero_ens.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode ensemble_experiment --phase phase5_architecture --tag p5_hetero_ens --members @phase4j_label_loss,p5_convnextv2,p5_effnetv2
+
   env/bin/python main.py --mode phase_select --phase phase5_architecture --reference @phase4j_label_loss
   ```
   If a ConvNeXt run goes out of memory at 512 px, re-run only that line with `img_size=384` added to its `--set`.
-- [ ] *G3b (optional, recommended for TMI) — retinal foundation-model baseline (RETFound)* (≈ 2 × 2 GPU h at 224 px).
+- [🔃] *G3b (optional, recommended for TMI) — retinal foundation-model baseline (RETFound)* (≈ 2 × 2 GPU h at 224 px).
   Reviewers of a 2026 DR paper will ask how the model compares with a retinal foundation model. The weights are
   gated: on a machine with internet, log in to Hugging Face, accept the terms of `YukunZhou/RETFound_mae_natureCFP`,
   download its `.pth` file and copy it to the server as `checkpoints/pretrain/RETFound_mae_natureCFP.pth`. Then
