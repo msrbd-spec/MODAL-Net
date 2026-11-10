@@ -543,3 +543,119 @@ Never write `WINNER.txt` by hand, never run `make_splits` again on the server, n
 ## Total GPU budget of this list
 Mandatory: C4 ≈ 7, E1 ≈ 28, E3 ≈ 28, F1 ≈ 2 (evaluation only), F2 ≈ 44, H ≈ 2 → **≈ 111 GPU h**
 (≈ 1.5–2 days of wall clock at 4–6 parallel slots). Optional G2b–G4: ≈ 37 GPU h. The SSL stop (A1) saves 52.
+
+
+---
+# Today's Summary (AI Generated)
+---
+
+# DR Grading Project — Results Report (state of 2026-11-10)
+
+Sources: `results/master/master_full.csv`, phase tables (`phase4j_label_loss`, `phase5_architecture`, `phase10_ms_ddr`, `phase10_ms_deepdrid`), `results/master/adaptation_compare.csv` (+ `adaptation_seeds/`), `seed_variance/compare.csv`. All decisions use OOF + external-DEV only (amended endpoint, pre-declared). QWK everywhere unless noted.
+
+## 1. Headline ladder (ours, step by step)
+
+| Model | APTOS OOF QWK | External DEV QWK (mean of 4 sites) | External TEST QWK |
+|---|---|---|---|
+| Plain baseline `p2a_plain` | 0.92 | 0.70 | 0.67 |
+| + supervised pretrain / preprocessing lineage (`p2b_none`) | 0.93 | 0.75 | 0.70 |
+| + multi-source joint training `p3b_joint` | 0.93 | **0.82** | 0.79 |
+| **FINAL = `p4j_coralsrc_shared`** (CE-softmax → coral_src shared-score ordinal head) | 0.93 | **0.84** | 0.80 |
+
+Each step is CI-supported; seed replicates agree (see §6). External mild recall drops from 0.45 (`p3b_joint`) to 0.17 (`FINAL`) in raw argmax, but recovers under DEV-calibrated cut-points — this is the pre-declared cut-point-shift story (§7).
+
+## 2. Phase 4j selection (6 ordinal-loss arms vs `p3b_joint`)
+
+| Arm | ΔOOF QWK (CI lo) | Δ ext-DEV QWK (CI lo) | Amended decision |
+|---|---|---|---|
+| p4j_coral | +0.01 (−0.00) | +0.00 (−0.01) | REJECT |
+| p4j_emd | 0.00 (−0.01) | −0.00 (−0.02) | REJECT |
+| p4j_aasl / p4j_aasl_emd | 0.00 / −0.01 | −0.01 | REJECT |
+| p4j_coralsrc (**with** per-source offsets) | 0.00 (−0.00) | −0.01 (−0.02) | REJECT |
+| **p4j_coralsrc_shared (shared cut-points only)** | 0.00 (−0.00) | **+0.02 (+0.01)** | **ADOPT** ✅ |
+
+Ablation note: adding per-source cut-point offsets (`src_offsets=true`) is *worse* than the plain shared score — the offsets were the paper's riskier idea; data chose the simpler head.
+
+## 3. Architecture / foundation-model comparison (G3, G3b — all `winner_eligible=false`)
+
+All arms reuse our exact recipe (LLRD, joint data, fold protocol); only the backbone differs.
+
+| Arm | APTOS OOF | Ext DEV QWK | Δ vs FINAL (CI lo) | Decision |
+|---|---|---|---|---|
+| ConvNeXt-V2-L 384 | **0.86** | 0.81 | −0.03 (−0.04) | REJECT |
+| EfficientNet-V2-M | 0.92 | 0.80 | −0.04 (−0.06) | REJECT |
+| Hetero ensemble (ViT-L+ConvNeXt+EffNet) | 0.93 | 0.82 | −0.02 (−0.04) | REJECT |
+| **RETFound (MAE, Nature CFP) on APTOS only** | 0.92 | **0.63** | **−0.21 (−0.24)** | REJECT |
+| RETFound + our joint multi-source training | 0.92 | 0.69 | −0.15 (−0.18) | REJECT |
+
+**Takeaway:** in-domain performance is matched or beaten by everything, but out-of-site ranking collapses for RETFound (−0.21) even when given our joint training. Architecture choice is not the driver; multi-source training + shared-score ordinal head is. Phase-5 winner stays `p4j_coralsrc_shared`.
+
+## 4. Phase 10, multi-source leave-sites-out (each arm scored only on sites it never saw)
+
+Group p10d (trained APTOS+EyePACS+DDR; held out Messidor-2/DeepDRiD/IDRiD):
+
+| Arm | Messidor-2 | DeepDRiD | IDRiD (DEV QWK) | Mean TEST |
+|---|---|---|---|---|
+| p10d_ce | 0.83 | 0.81 | 0.84 | 0.80 |
+| p10d_coralsh | 0.83 | 0.81 | 0.84 | 0.80 |
+| p10d_coralsrc | 0.84 | 0.79 | 0.86 | 0.81 |
+
+Group p10q (trained APTOS+EyePACS+DeepDRiD; held out Messidor-2/DDR/IDRiD):
+
+| Arm | Messidor-2 | DDR | IDRiD (DEV QWK) | Mean TEST |
+|---|---|---|---|---|
+| p10q_ce | 0.76 | 0.87 | 0.84 | 0.77 |
+| p10q_coralsh | 0.76 | 0.88 | 0.87 | 0.77 |
+| p10q_coralsrc | 0.75 | 0.86 | 0.87 | 0.76 |
+
+Ranking quality (QWK) at truly unseen sites is essentially identical across heads — both `phase_select`s returned **REFERENCE** (CE stays "winner", i.e. no ordinal head beat it under the amended endpoint).
+
+## 5. Cut-point adaptation to new sites (E4) — ⚠️ pre-declared primary claim FAILS
+
+Pre-declared rule (written 2026-11-06, before any adaptation result): claim "the ordinal shared score adapts better" **only if** `diff_lo > 0` in **both** phase-10 groups at level `fewshot_shrink`, n = 25, MEAN QWK vs the group's `_ce` arm — and again in the seed re-run. **Result: 0/4 cells pass; seeds 0/2 pass. No claim may be made.** Paired-difference means with bootstrap CI lower bounds (`adaptation_compare.csv`, `dataset=MEAN`, `metric=qwk`):
+
+fewshot_shrink (refit shrunk toward default cut-points; diff / CI-lo):
+
+| vs CE | n=10 | n=25 (primary) | n=50 | n=100 |
+|---|---|---|---|---|
+| p10d_coralsh | +0.012 / −0.007 | +0.007 / **−0.009** | +0.003 / −0.014 | −0.003 / −0.021 |
+| p10d_coralsrc | +0.007 / −0.014 | −0.007 / −0.021 | +0.001 / −0.016 | −0.012 / −0.024 |
+| p10q_coralsh | **+0.036 / +0.005 ✅** | +0.025 / −0.003 (near miss) | +0.011 / −0.015 | +0.014 / −0.011 |
+| p10q_coralsrc | +0.029 / −0.010 | +0.022 / −0.014 | +0.011 / −0.010 | +0.007 / −0.018 |
+| Seed re-run: coralsrc_s1 | +0.019 / −0.013 | +0.018 / −0.008 | +0.004 / −0.015 | +0.007 / −0.013 |
+| Seed re-run: coralsrc_s2 | **+0.032 / +0.006 ✅** | +0.007 / −0.024 | +0.014 / −0.006 | +0.009 / −0.006 |
+
+However, the rule also says *"reported whatever the outcome"* — and two levels **do** show CI-positive differences, all favoring the ordinal head:
+
+| Zero-label levels (n=0) | diff | CI lo |
+|---|---|---|
+| p10d_coralsh, default fixed cut-points | +0.031 | **+0.012** |
+| p10d_coralsrc, default cut-points | +0.032 | **+0.011** |
+| p10q_coralsh, default cut-points | +0.052 | **+0.032** |
+| p10q_coralsrc, default cut-points | +0.038 | **+0.011** |
+
+Interpretation candidate (needs Claude's honest framing, post-hoc label required): with **no site labels at all**, applying the *default* cut-points to the shared ordinal score beats the CE arm at every held-out site in both groups; the pre-declared *few-shot* endpoint did not clear the bar. In-source control group (phase-4j heads vs `p3b_joint`, same analysis): `p4j_coralsrc_shared` positive everywhere, few-shot n=100 +0.018 (+0.008 lo) and shrink n=10 +0.028 (+0.015 lo).
+
+## 6. Seed consistency (headline configs, seeds 0/1/2)
+
+| Config | OOF QWK | Ext DEV QWK | Ext TEST QWK |
+|---|---|---|---|
+| FINAL `p4j_coralsrc_shared` / _s1 / _s2 | 0.93 / 0.93 / 0.93 | 0.84 / 0.84 / 0.83 | 0.80 / 0.80 / 0.79 |
+| `p4j_coralsrc` / _s1 / _s2 | 0.93 / 0.93 / 0.93 | 0.82 / 0.83 / 0.83 | 0.79 / 0.80 / 0.80 |
+| baseline `p2a_plain` / s1 / s2 | 0.92 all | 0.70 / 0.69 / 0.68 | 0.67 / 0.64 / 0.67 |
+
+Seed SDs are small; adoption decision is stable across seeds (`seed_variance.csv`, `seed_compare.csv`).
+
+## 7. Cut-point-shift evidence (motivation, pre-declared for the paper)
+
+Raw argmax vs DEV-calibrated mild recall (external TEST, per site) shows the ranking is fine but the *thresholds* are site-wrong — e.g. FINAL: raw mild recall 0.11 (Messidor) / 0.15 (DDR) vs devcal 0.25 / 0.25; `p3b_joint` over-calls (raw 0.33–0.45). Bin AUROC ≈ 0.94–0.97 everywhere confirms "good ranking, wrong cut-points". Tables: `*_devcal_*` columns of `master_full.csv`, `cutpoint_diagnostic.csv`.
+
+## 8. Status & remaining work
+
+- Done: C, D, E1–E4 (incl. seed re-run), F1, F2a–c, G1/G2b/G3/G3b. G4 (optional, 4 jobs) deferred; H1 TTA + H2 XAI ×4 running/queued; conformal done. H3 (final tables/figures) runs last, then H4 backup/cleanup.
+- Files for this report (uploaded): `master_full.csv`, `seed_variance.csv`, `seed_compare.csv`, phase tables for phase4j/phase5/phase10_ms_ddr/phase10_ms_deepdrid, `adaptation_{curve,compare,lambda}.csv`, `adaptation_seeds/*`.
+- **Key asks for the AI agent:** (1) the pre-declared adaptation claim failed at the primary endpoint — help frame the honest negative + the CI-positive `default_cuts` finding as post-hoc/exploratory; (2) the RETFound −0.21 external gap and the 0.70→0.82→0.84 ladder are the paper's spine; (3) phase-10 `phase_select` = REFERENCE in both groups is consistent with (1).
+
+---
+
+Chaile ei text ta ami ekta file-e-o save kore dite pari (jemon `results/reports/REPORT_20261110.md`) — bolo.
