@@ -119,6 +119,15 @@ Cut-point diagnostic on saved predictions (CPU, seconds; works with the old Mess
 python tools/cutpoint_diagnostic.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral
 ```
 
+Reviewer-requested analyses (step R of `SERVER_TODO.md`; pre-declared rules there):
+```bash
+python main.py --mode target_adapt --tag p3b_joint --set target_adapt_method=bn      # GPU; also =tent
+python main.py --mode extract_features --tag p3b_joint                              # GPU; CE heads only
+python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce                        # CPU; needs extract_features
+python tools/recalibration_suite.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared   # CPU
+python tools/shift_decomposition.py --tags p3b_joint,p10d_ce,p10q_ce                 # CPU
+```
+
 Cut-point adaptation to new sites (CPU, minutes; held-out sites only; levels: argmax, grade distribution only,
 n labelled DEV images with / without shrinkage, all DEV; pre-declared endpoint in `SERVER_TODO.md` E4):
 ```bash

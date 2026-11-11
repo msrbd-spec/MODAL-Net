@@ -378,11 +378,36 @@ def fig_fewshot(out_dir, cfg):
     save_fig(fig, os.path.join(out_dir, 'fig10_fewshot_cutpoints'))
 
 
+DEFAULT_ORDINAL = 'p4j_coralsrc_shared'
+
+
+def _ordinal_run(cfg):
+    """(tag, exp_dir, note) of the coral_src run for the source cut-point figure.
+
+    cfg['report_ordinal'] (default p4j_coralsrc_shared). Only when that run does not exist in this project
+    (e.g. a reduced project) is report_final used instead, and the substitution is returned as a note for
+    FIGURES_README.txt. A report_ordinal run that exists but is not a coral_src run is an error."""
+    tag = cfg.get('report_ordinal', DEFAULT_ORDINAL)
+    if tag:
+        try:
+            return tag, _exp(tag), None
+        except FileNotFoundError:
+            final = cfg.get('report_final')
+            if not final:
+                raise FileNotFoundError(f'report_ordinal run {tag!r} not found under results/phase*/')
+            return final, _exp(final), f'report_ordinal run {tag!r} not found: report_final {final!r} used'
+    final = cfg.get('report_final')
+    if not final:
+        raise FileNotFoundError('set --set report_ordinal=<coral_src tag>')
+    return final, _exp(final), 'report_ordinal is null: report_final used'
+
+
 def fig_source_thresholds(out_dir, cfg):
-    d = _exp(cfg['report_final'])
+    tag, d, note = _ordinal_run(cfg)
     files = sorted(glob.glob(os.path.join(d, 'source_thresholds_fold*.json')))
     if not files:
-        raise FileNotFoundError('source_thresholds_fold*.json (report_final is not a coral_src run)')
+        who = 'report_ordinal' if note is None else 'report_final'
+        raise FileNotFoundError(f'source_thresholds_fold*.json ({who} {tag} is not a coral_src run)')
     data = [json.load(open(f)) for f in files]
     names = list(data[0].keys())
     fig, ax = _new_fig(3.5, 2.8)
@@ -398,6 +423,7 @@ def fig_source_thresholds(out_dir, cfg):
     ax.set_ylabel('Cut-point on severity score')
     ax.legend(frameon=False, fontsize=6.5)
     save_fig(fig, os.path.join(out_dir, 'fig11_source_cutpoints'))
+    return f'drawn from {tag}' + (f' ({note})' if note else ' (report_ordinal)')
 
 
 def fig_label_ambiguity(out_dir, cfg):
@@ -421,6 +447,8 @@ def fig_label_ambiguity(out_dir, cfg):
     save_fig(fig, os.path.join(out_dir, 'fig12_label_ambiguity'))
 
 
+# needs: False = no model; True = cfg report_final; 'ordinal' = cfg report_ordinal (report_final only when the
+# report_ordinal run does not exist, see _ordinal_run)
 PAPER_FIGURES = [
     ('fig01_class_distributions', fig_class_distributions, False),
     ('fig02_training_curves', fig_training_curves, True),
@@ -432,37 +460,87 @@ PAPER_FIGURES = [
     ('fig08_phase_forest', fig_phase_forest, False),
     ('fig09_per_class', fig_per_class, True),
     ('fig10_fewshot_cutpoints', fig_fewshot, True),
-    ('fig11_source_cutpoints', fig_source_thresholds, True),
+    ('fig11_source_cutpoints', fig_source_thresholds, 'ordinal'),
     ('fig12_label_ambiguity', fig_label_ambiguity, False),
 ]
+
+# Figures written by the stand-alone tools into results/figures/ (never regenerated or deleted by --mode report):
+# (glob pattern without extension, producing tool, command that writes it)
+TOOL_FIGURES = [
+    ('fig_recal_levels', 'tools/recalibration_suite.py', 'python tools/recalibration_suite.py --tags <tags>'),
+    ('fig_recal_misspec', 'tools/recalibration_suite.py', 'python tools/recalibration_suite.py --tags <tags>'),
+    ('fig_recal_operating_points', 'tools/recalibration_suite.py',
+     'python tools/recalibration_suite.py --tags <tags>'),
+    ('fig_recal_*', 'tools/recalibration_suite.py', 'python tools/recalibration_suite.py --tags <tags>'),
+    ('fig_shift_decomposition', 'tools/shift_decomposition.py', 'python tools/shift_decomposition.py --tags <tags>'),
+    ('fig_adaptation*', 'tools/adaptation_curve.py', 'python tools/adaptation_curve.py --groups <groups>'),
+]
+TOOL_FIG_DIR = os.path.join('results', 'figures')
+
+
+def tool_figures_status(fig_dir=TOOL_FIG_DIR):
+    """[(name, tool, 'present' | 'missing', detail)] for every figure the tools write. Wildcard entries list
+    each matching file not already covered by an explicit entry (nothing listed when none exists, except for
+    fig_adaptation*, which is reported missing when no file matches)."""
+    out, seen = [], set()
+    for pat, tool, cmd in TOOL_FIGURES:
+        stems = {os.path.splitext(os.path.basename(p))[0] for e in ('png', 'pdf')
+                 for p in glob.glob(os.path.join(fig_dir, f'{pat}.{e}'))}
+        names = sorted(n for n in stems if n not in seen)
+        if not names and pat == 'fig_recal_*':          # catch-all for further suite figures: nothing extra
+            continue
+        if not names:
+            out.append((pat, tool, 'missing', f'run: {cmd}'))
+            seen.add(pat)
+            continue
+        for n in names:
+            seen.add(n)
+            exts = [e for e in ('png', 'pdf') if os.path.isfile(os.path.join(fig_dir, f'{n}.{e}'))]
+            out.append((n, tool, 'present', '+'.join(exts)))
+    return out
 
 
 def build_paper_figures(out_dir: str = 'results/figures', cfg: dict = None):
     """Draw every paper figure whose inputs exist; list skipped figures in FIGURES_README.txt.
 
     Figures that need a model read cfg['report_final'] (and cfg['report_baseline'] where two models are
-    compared). The XAI grid is produced separately by --mode xai (results/figures/xai_grid.*).
+    compared); the source cut-point figure reads the ordinal run cfg['report_ordinal']. The XAI grid is
+    produced separately by --mode xai (results/figures/xai_grid.*). The recalibration / shift-decomposition /
+    adaptation figures written by tools/*.py are only registered (present / missing) in FIGURES_README.txt.
     """
     cfg = cfg or {}
     os.makedirs(out_dir, exist_ok=True)
     for old in glob.glob(os.path.join(out_dir, 'fig[0-9]*.png')) + glob.glob(os.path.join(out_dir, 'fig[0-9]*.pdf')):
         os.remove(old)
-    done, skipped = [], []
+    done, skipped, notes = [], [], []
     for name, fn, needs_model in PAPER_FIGURES:
-        if needs_model and not cfg.get('report_final'):
+        if needs_model == 'ordinal':
+            if not (cfg.get('report_ordinal', DEFAULT_ORDINAL) or cfg.get('report_final')):
+                skipped.append(f'{name}: set --set report_ordinal=<coral_src tag>')
+                continue
+        elif needs_model and not cfg.get('report_final'):
             skipped.append(f'{name}: set --set report_final=<tag> (and report_baseline=<tag>)')
             continue
         try:
-            fn(out_dir, cfg)
+            note = fn(out_dir, cfg)
             done.append(name)
+            if isinstance(note, str) and note:
+                notes.append(f'{name}: {note}')
         except (FileNotFoundError, KeyError, ValueError) as e:
             skipped.append(f'{name}: input missing ({e})')
         finally:
             plt.close('all')
+    tools = tool_figures_status()
     with open(os.path.join(out_dir, 'FIGURES_README.txt'), 'w') as f:
         f.write('Paper figures drawn from real results only.\n\nWritten:\n')
         f.writelines(f'  {d}\n' for d in done)
         f.write('\nSkipped:\n')
         f.writelines(f'  {s}\n' for s in skipped)
-    print(f"build_paper_figures: {len(done)} figures written, {len(skipped)} skipped -> {out_dir}/FIGURES_README.txt")
+        if notes:
+            f.write('\nNotes:\n')
+            f.writelines(f'  {s}\n' for s in notes)
+        f.write(f'\nProduced by tools (in {TOOL_FIG_DIR}/; not regenerated by --mode report):\n')
+        f.writelines(f'  {n}: produced by {t} ({st}; {det})\n' for n, t, st, det in tools)
+    print(f"build_paper_figures: {len(done)} figures written, {len(skipped)} skipped, "
+          f"{sum(st == 'present' for _, _, st, _ in tools)} tool figures present -> {out_dir}/FIGURES_README.txt")
     return done, skipped

@@ -9,8 +9,8 @@ TEST is used only for reporting):
 
   L0  argmax          nothing: the model's own prediction
   L0  default_cuts    nothing: cut-points 0.5, 1.5, 2.5, 3.5 on E
-  L1  prevalence      the site's grade distribution only (counts, no image labels) + its unlabelled DEV
-                      images: cut-points = quantiles of E that reproduce the grade shares
+  L1  prevalence_oracle  ORACLE: grade shares from the site's DEV labels; upper bound, not label-free.
+                      With its unlabelled DEV images: cut-points = quantiles of E that reproduce the grade shares
   L2  fewshot         n labelled DEV images (n in --ns, --draws random draws): QWK-optimal cut-points
   L2  fewshot_shrink  the same, shrunk towards the default cut-points (QWK - lam * ||c - c0||^2). lam is
                       chosen per model and per target site by leave-one-site-out over the OTHER held-out
@@ -28,7 +28,12 @@ Outputs (results/master/):
                            (dataset 'MEAN' = mean over the run's held-out datasets)
   adaptation_compare.csv   every model vs the first tag of its group, same level and n: mean paired
                            difference and 95 % interval (few-shot: over draws; other levels: paired TEST
-                           bootstrap, each dataset resampled independently)
+                           bootstrap, each dataset resampled independently). The TEST bootstrap resamples
+                           whole patients / exams when splits/external/<ds>_test.csv has a `group` column
+                           whose ids match the TEST ids (DeepDRiD: 4 images per patient; Messidor-2: exam
+                           pairs; matching exactly as tools/recalibration_suite._test_groups), else images;
+                           both models of a pair always see the same resamples. Column bootstrap_unit
+                           records the unit ('draws' for few-shot rows; MEAN: the per-dataset units)
   adaptation_lambda.csv    the lam chosen for every (tag, target dataset, n)
   results/figures/fig_adaptation.{png,pdf}   QWK vs n per group (mean over held-out datasets;
                            fig_adaptation_<out_dir name> when --out_dir is not results/master)
@@ -140,7 +145,7 @@ def analyse_tag(tag, ns, draws, seed):
         add('argmax', 0, [d['P_test'].argmax(1)])
         add('default_cuts', 0, [apply_cutpoints(E_test, DEFAULT_CUTS)])
         props = np.bincount(y_dev, minlength=K) / len(y_dev)
-        add('prevalence', 0, [apply_cutpoints(E_test, prevalence_cutpoints(E_dev, props))])
+        add('prevalence_oracle', 0, [apply_cutpoints(E_test, prevalence_cutpoints(E_dev, props))])
         for n in ns:
             if n >= len(y_dev):
                 continue
@@ -171,43 +176,136 @@ def _metric_values(y, pred_list, metric):
     return np.array([grade_metrics(y, p)[metric] for p in pred_list], dtype=float)
 
 
+CMP_COLUMNS = ['reference', 'tag', 'dataset', 'level', 'n', 'metric', 'diff_mean', 'diff_lo', 'diff_hi',
+               'n_resamples', 'bootstrap_unit']
+
+
+class _SilentNotes:
+    """Stand-in for recalibration_suite.Notes (its _test_groups records why it fell back to images)."""
+
+    def __init__(self):
+        self.rows = []
+
+    def add(self, *args, **kwargs):
+        self.rows.append(args)
+
+
+def _stem(x):
+    return os.path.splitext(os.path.basename(str(x)))[0]
+
+
+def _test_groups_local(ds, ids_test):
+    """Identical rule to tools/recalibration_suite._test_groups (used only if that cannot be imported):
+    split-file id_code matched exactly, else by file stem; every TEST id must be found."""
+    p = os.path.join('splits', 'external', f'{ds}_test.csv')
+    if not os.path.isfile(p):
+        return np.asarray(ids_test), 'image (no split file)'
+    d = pd.read_csv(p, dtype={'id_code': str, 'group': str}, keep_default_na=False)
+    if 'group' not in d.columns:
+        return np.asarray(ids_test), 'image (split file has no group column)'
+    g = dict(zip(d['id_code'].astype(str), d['group'].astype(str)))
+    g.update({_stem(k): v for k, v in list(g.items()) if _stem(k) not in g})
+    out = [g.get(str(i), g.get(_stem(i))) for i in ids_test]
+    if any(v is None or v == '' for v in out):
+        return np.asarray(ids_test), 'image (ids not matched in split file)'
+    out = np.asarray(out)
+    if len(np.unique(out)) == len(out):
+        return out, 'image'
+    return out, f'cluster (group column; {len(np.unique(out))} groups / {len(out)} images)'
+
+
+def _resolve_test_groups(ds, ids_test):
+    """(groups, unit) of the TEST images of ds. Reuses tools/recalibration_suite._test_groups so that both
+    tools resample the same units; its local copy is used only if that import / call fails."""
+    ids_test = np.asarray(ids_test)
+    try:
+        from tools.recalibration_suite import _test_groups as suite_groups
+        groups, unit = suite_groups(ds, ids_test, '-', _SilentNotes())
+        groups = np.asarray(groups)
+        if len(groups) != len(ids_test):
+            raise ValueError('group vector length mismatch')
+    except Exception:                                          # noqa: BLE001 - identical local rule
+        groups, unit = _test_groups_local(ds, ids_test)
+    return groups, str(unit)
+
+
+def _test_ids(P, ds):
+    """TEST ids of ds from the ('_ids', ds) entry (DEV ids, '|', TEST ids)."""
+    ids = np.asarray(P[('_ids', ds)])
+    sep = np.flatnonzero(ids == '|')
+    return ids[sep[-1] + 1:] if len(sep) else ids
+
+
+def _boot_indices(groups, unit, n, B, rng):
+    """B resamples of TEST image indices. Image level (unit 'image...'): rng.integers(0, n, n) per resample,
+    exactly the original image bootstrap. Cluster level: G groups drawn with replacement per resample, every
+    image of each drawn group included (a group drawn twice contributes its images twice)."""
+    if str(unit).startswith('image'):
+        for _ in range(B):
+            yield rng.integers(0, n, n)
+        return
+    _, codes = np.unique(np.asarray(groups).astype(str), return_inverse=True)
+    G = int(codes.max()) + 1
+    members = [np.flatnonzero(codes == g) for g in range(G)]
+    for _ in range(B):
+        yield np.concatenate([members[g] for g in rng.integers(0, G, G)])
+
+
+def _mean_unit(units):
+    u = list(dict.fromkeys(units.values()))
+    return u[0] if len(u) == 1 else '; '.join(f'{ds}: {v}' for ds, v in units.items())
+
+
 def compare(ref, tag, P_ref, P_tag, B, seed):
-    """Paired differences tag - ref per (dataset, level, n) and their mean over common held-out datasets."""
+    """Paired differences tag - ref per (dataset, level, n) and their mean over common held-out datasets.
+
+    Deterministic levels: paired TEST bootstrap, clustered by patient / exam when the split file provides
+    groups (see _resolve_test_groups); the same resample indices are applied to both models."""
     rows = []
     keys = sorted({k for k in P_tag if k[0] not in ('_y', '_ids') and k in P_ref}, key=str)
     common_ds = sorted({k[0] for k in keys})
     for ds in common_ds:
         if not np.array_equal(P_ref[('_ids', ds)], P_tag[('_ids', ds)]):
             raise ValueError(f'adaptation_curve: {tag} and {ref} have different {ds} DEV/TEST images')
+    groups = {}
+    for ds in common_ds:
+        ids_t = _test_ids(P_ref, ds)
+        g, unit = _resolve_test_groups(ds, ids_t)
+        if len(g) != len(P_ref[('_y', ds)]):
+            g, unit = ids_t, 'image (TEST ids / labels length mismatch)'
+        groups[ds] = (g, unit)
     by_level = {}
     for ds, level, n in keys:
         by_level.setdefault((level, n), []).append(ds)
     rng = np.random.default_rng(seed)
     for (level, n), dss in by_level.items():
         for metric in ('qwk', 'mild_recall', 'bin_sens'):
-            per_ds = {}
+            per_ds, units = {}, {}
             for ds in dss:
                 y = P_ref[('_y', ds)]
                 a, r = P_tag[(ds, level, n)], P_ref[(ds, level, n)]
                 if len(a) > 1:                                     # few-shot: paired over identical draws
                     per_ds[ds] = _metric_values(y, a, metric) - _metric_values(y, r, metric)
+                    units[ds] = 'draws'
                 else:                                              # deterministic: paired TEST bootstrap
+                    g, unit = groups[ds]
                     d = np.empty(B)
-                    for b in range(B):
-                        i = rng.integers(0, len(y), len(y))
+                    for b, i in enumerate(_boot_indices(g, unit, len(y), B, rng)):
                         d[b] = grade_metrics(y[i], a[0][i])[metric] - grade_metrics(y[i], r[0][i])[metric]
                     per_ds[ds] = d
+                    units[ds] = unit
             for ds, d in per_ds.items():
                 rows.append({'reference': ref, 'tag': tag, 'dataset': ds, 'level': level, 'n': n, 'metric': metric,
                              'diff_mean': float(np.nanmean(d)), 'diff_lo': float(np.nanpercentile(d, 2.5)),
-                             'diff_hi': float(np.nanpercentile(d, 97.5)), 'n_resamples': len(d)})
+                             'diff_hi': float(np.nanpercentile(d, 97.5)), 'n_resamples': len(d),
+                             'bootstrap_unit': units[ds]})
             if len(per_ds) == len(common_ds) and len(per_ds) > 1:
                 m = min(len(v) for v in per_ds.values())
                 d = np.mean([v[:m] for v in per_ds.values()], axis=0)
                 rows.append({'reference': ref, 'tag': tag, 'dataset': 'MEAN', 'level': level, 'n': n,
                              'metric': metric, 'diff_mean': float(np.nanmean(d)),
                              'diff_lo': float(np.nanpercentile(d, 2.5)), 'diff_hi': float(np.nanpercentile(d, 97.5)),
-                             'n_resamples': m})
+                             'n_resamples': m, 'bootstrap_unit': _mean_unit(units)})
     return rows
 
 
@@ -224,7 +322,7 @@ def plot(curve, groups, out_stem):
             fs = g[g['level'] == 'fewshot_shrink'].sort_values('n')
             line = ax.plot(fs['n'], fs['qwk_mean'], marker='o', label=f'{tag} (few-shot, shrunk)')[0]
             col = line.get_color()
-            for level, mk in (('argmax', 'x'), ('prevalence', 's')):
+            for level, mk in (('argmax', 'x'), ('prevalence_oracle', 's')):
                 v = g.loc[g['level'] == level, 'qwk_mean']
                 if len(v):
                     ax.scatter([5], v.values[:1], marker=mk, color=col, zorder=3)
@@ -234,7 +332,7 @@ def plot(curve, groups, out_stem):
         ax.set_xscale('log')
         ax.set_xlabel('labelled target-site DEV images (n)')
         ax.set_ylabel('QWK on held-out TEST (mean over sites)')
-        ax.set_title('x = argmax, square = prevalence only, dotted = all DEV', fontsize=8)
+        ax.set_title('x = argmax, square = prevalence_oracle (DEV-label shares), dotted = all DEV', fontsize=8)
         ax.legend(fontsize=7)
     fig.tight_layout()
     os.makedirs(os.path.dirname(out_stem), exist_ok=True)
@@ -274,8 +372,7 @@ def main():
     os.makedirs(a.out_dir, exist_ok=True)
     curve = pd.DataFrame(curve_rows)
     curve.round(4).to_csv(os.path.join(a.out_dir, 'adaptation_curve.csv'), index=False)
-    pd.DataFrame(cmp_rows, columns=['reference', 'tag', 'dataset', 'level', 'n', 'metric', 'diff_mean', 'diff_lo',
-                                    'diff_hi', 'n_resamples']).round(4).to_csv(
+    pd.DataFrame(cmp_rows, columns=CMP_COLUMNS).round(4).to_csv(
         os.path.join(a.out_dir, 'adaptation_compare.csv'), index=False)
     pd.DataFrame(lam_rows, columns=['tag', 'dataset', 'n', 'lam', 'chosen_from']).to_csv(
         os.path.join(a.out_dir, 'adaptation_lambda.csv'), index=False)

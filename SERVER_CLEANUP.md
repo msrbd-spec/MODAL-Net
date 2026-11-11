@@ -10,13 +10,14 @@ later step of `SERVER_TODO.md`.
 
 ## When to run which section
 
-| Section | What | When (step of `SERVER_TODO.md`) | How often |
+| Section | What | When (step of `SERVER_TODO.md`) | Status |
 |---|---|---|---|
-| 1 | big leftovers of stopped runs, test leftovers, caches | B5 (done) and again at H4 | any time; safe to repeat |
-| 2 | tables / figures built by the old code | **only** at B5 (done) | once — never after C4b |
+| 1 | big leftovers of stopped runs, test leftovers, caches | B5 (done) and again at H4 | safe to repeat any time |
+| 2 | tables / figures built by the old code | **only** at B5 | **DONE — never run again** (it would delete current results) |
 | 3 | feature caches of the removed phase 7 | any time | once |
 | 4 | old backups | after each new backup | whenever `backups/` grows |
 | 5 | checkpoints of arms not in any table | after the paper is submitted | once, optional |
+| 6 | large intermediate files of the reviewer analyses (step R) | after the paper tables are final (H3) | once |
 
 **Never delete:**
 - `checkpoints/<tag>/` of any finished experiment (fold weights, `config_snapshot.yaml`, `thresholds.json`).
@@ -29,6 +30,7 @@ later step of `SERVER_TODO.md`.
 - `results/phase0_protocol/audit/` (duplicate audit, hash caches, contact sheets).
 - `datasets/` (except the DDR `.cache/` folder in section 1).
 - `outputs/` while a job is still running (its log is written there).
+- `results/<phase>/<tag>/target_adapt/` and `results/master/recal/` (small; they hold the reviewer analyses of step R).
 
 ---
 
@@ -127,23 +129,41 @@ du -sh checkpoints/$TAG && rm -rf checkpoints/$TAG
 Never delete the checkpoints of `p2a_plain`, `p2b_none`, `p3a_sup`, `p3b_joint`, `p4_coral`, FINAL, the
 phase-10 arms or any seed run: they are in the paper tables and the XAI figures.
 
+## 6. After the reviewer analyses (step R) — once the paper tables are final (after H3)
+
+**6a. Penultimate features** written by `--mode extract_features` (R1): large (≈ 0.1–0.3 GB per tag), and only
+`tools/fewshot_head.py` (R2) reads them. They can be rebuilt in ≈ 0.25 GPU h per tag if ever needed.
+```bash
+du -sh results/phase*/*/features 2>/dev/null
+rm -rf results/phase*/*/features
+```
+
+**6b. Job logs of finished runs** (after the H4 backup; the backup keeps results, not logs):
+```bash
+du -sh outputs logs
+tar czf backups/logs_$(date +%Y%m%d).tgz outputs logs && rm -rf outputs/* logs/*
+```
+
 ---
 
 ## On the Mac (`/Users/meheraj/Documents/MODAL-Net`)
 
-These are test leftovers on the Mac copy only (the real ones are on the server). Run after B4 passes on the
-server; none of them is needed on the Mac:
+The Mac copy is now a git repo that also holds **real** result files copied from the server
+(`results/master/*.csv`, `results/phase*/phase_table*.csv`). Do **not** delete those. Only these are leftovers:
 ```bash
 cd /Users/meheraj/Documents/MODAL-Net
-rm -rf _transfer                                        # temporary archive used to move the code
-rm -f splits/aptos_folds.json splits/messidor_dev_ids.json splits/messidor_test_ids.json   # synthetic (24/96 ids)
-rm -rf checkpoints/smoke results/phase0_protocol/smoke results/phase0_protocol/splits_summary.csv
+rm -rf _transfer daily                                   # temporary transfer folder / old daily-report copies
+rm -f splits/aptos_folds.json splits/messidor_dev_ids.json splits/messidor_test_ids.json   # synthetic (24/96 ids from tests)
+rm -rf checkpoints/smoke results/phase0_protocol/smoke
 rm -rf logs/test_fb_reweight logs/ens_test logs/p8_conf_test logs/p8_tta_flip_mock logs/default
-rm -f results/tables/table* results/master/master_* results/figures/fig* results/all_runs.npz
 rm -rf results/phase7_feature_balance .pytest_cache datasets/DDR-dataset/.cache
-rm -f test_errors.txt
+rm -f test_errors.txt E3_Status.md
 find . -name __pycache__ -type d -prune -exec rm -rf {} +
 find . -name .DS_Store -delete
+git status --short                                       # review, then commit the deletions of tracked files
 ```
+`results/tables/table*` and `results/figures/fig*` on the Mac that are older than 2026-11-03 were made by the old
+code (test leftovers); the real ones are rebuilt on the server in H3. Delete them only if you are sure:
+`ls -lt results/tables results/figures`.
 The DeepDRiD `.git/` and `ultra-widefield_images/` folders on the Mac are not used by the code and are not
 copied to the server (SERVER_TODO B3).

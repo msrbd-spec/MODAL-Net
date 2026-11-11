@@ -282,7 +282,7 @@ S14. TESTS AND ACCEPTANCE (tests/; run before reporting)
   report-only) -> master_table -> seed grouping -> report from real data -> cut-point and leakage tools -> XAI grid on an external set and expert-mask
   localisation. T17-T22 (tests/test_external_and_config.py): strict --set, validate_cfg, xlsx reader, official-split frames, frozen splits with
   duplicate exclusion, missing dataset fails, QWK == sklearn and cut-point recovery of a shifted scorer, AASL / mixup hard stops, zoo full1744 columns.
-  T7 report tests: without runs, no table or figure may be written. Expected: 84 passed (incl. tests/test_adaptation.py, tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
+  T7 report tests: without runs, no table or figure may be written. Expected: 140 passed (incl. tests/test_recalibration.py, tests/test_target_adapt.py, tests/test_shift_decomposition.py, tests/test_adaptation.py, tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
 
 S15. RISKS AND THINGS TO VERIFY FIRST
   - MaxViT timm id / image size / offline cache; module names (stem, stages.i) for LLRD and MixStyle hooks; whether the zoo used another MaxViT-L variant; GPU memory at 512 px (use grad_checkpointing / grad_accum).
@@ -318,17 +318,23 @@ S16. THEORETICAL MOTIVATION — THREE PROPOSITIONS [added 2026-11-06]
   sites (covariate shift allowed). A1 is only approximately true; the paper says so and shows the evidence (P1 check).
 
   Proposition 1 (cut-point shift leaves the ranking intact; the optimal site rule is a threshold rule on s).
-    (a) Any ranking metric of s (e.g. referable AUROC) is unchanged by the cut-points; a change of cut-points alone
-        changes QWK / accuracy / sensitivity but not AUROC.
+    [corrected 2026-11-09 after the literature review and external reviews]
+    (a) Under A1, P_d(y > k | x) is increasing in s(x) at every site and for every k, whatever the cut-points c_d:
+        the ORDERING of images by s is the optimal ordering at every site (ranking invariance). The VALUE of the
+        referable AUROC is not invariant in general: which images count as referable depends on where the site's
+        referable cut-point c_{d,2} sits on the latent scale. Do NOT claim "AUROC is invariant"; claim ranking
+        invariance, and note that changing only the cut-points of a fixed score cannot change any rank metric of
+        that score (algebraic, not evidence).
     (b) Under A1, for every per-image loss L(|yhat - y|) with L convex and non-decreasing (absolute, quadratic error),
         the Bayes rule at site d is non-decreasing in s, i.e. it equals h_{t_d} for some t_d that depends only on c_d
         and F. Adapting to a new site therefore needs only K-1 numbers.
     Proof idea: P_d(y > k | s) = F(s - c_{d,k}) is increasing in s for every k, so y | s is first-order stochastically
     increasing in s; for convex L the difference L(|a+1-y|) - L(|a-y|) is non-increasing in y, hence the expected
-    loss is submodular in (a, s) and its minimiser is non-decreasing in s (Topkis). QWK is not a per-image loss; the
+    loss is submodular in (a, s) and its minimiser is non-decreasing in s (Topkis 1978; see also Pedregosa et al.
+    JMLR 2017 and Yamasaki TMLR 2023 for the ordinal-regression statements). QWK is not a per-image loss; the
     quadratic error is its per-image analogue (stated in the paper).
-    Empirical check: external AUROC is stable while QWK moves (p2b_none -> p3b_joint: ext. mean TEST QWK 0.70 -> 0.79,
-    AUROC 0.93 -> 0.93; cutpoint_diagnostic: refit gains with unchanged AUROC).
+    Empirical support (not proof): ordinal pairwise concordance and one-vs-rest AUROC of E per site
+    (results/master/recal/ordinal_discrimination.csv), and the shift decomposition (step R4).
 
   Proposition 2 (label efficiency of cut-point adaptation).
     (a) Few-shot labels: the threshold class {h_t} on a scalar score has growth function at most (n+1)^{K-1}. For a loss
@@ -339,6 +345,9 @@ S16. THEORETICAL MOTIVATION — THREE PROPOSITIONS [added 2026-11-06]
         the empirical quantiles converge at rate O(sqrt(log(1/delta) / m)) (DKW). They equal the Bayes cut-points of
         P1(b) only in the noise-free case y = h_{c_d}(x); with label noise they match the shares, not the optimum
         (stated as a limitation).
+        [2026-11-09] Additional assumption needed for (b) to give the Bayes cut-points: the grades are a monotone
+        function of the shared score at the target site (A1 without noise); otherwise prevalence matching is a
+        heuristic. The excess-risk bound in (a) needs a bounded loss and a fixed score; state both explicitly.
     Empirical check: adaptation_curve.csv, the QWK gap to the "all DEV" refit shrinks as n grows (slope of
     log(gap) vs log(n), expected near -1/2); prevalence level vs argmax.
 
@@ -349,6 +358,8 @@ S16. THEORETICAL MOTIVATION — THREE PROPOSITIONS [added 2026-11-06]
     n, with the largest gain at small n; w -> 1 as n grows. The penalised fit QWK - lambda ||c - c0||^2 used in E4 is
     the analogue of this MAP estimate (lambda plays the role of sigma^2 / (n tau^2)); lambda is chosen across sites
     (leave-one-site-out), i.e. tau is estimated from the other sites, never from the target TEST split.
+    [2026-11-09] The MSE reduction holds under the stated Gaussian prior; with only 3-4 held-out sites tau is
+    poorly estimated, so the proposition is a motivation, not a guarantee.
     Testable prediction: the chosen lambda decreases with n, and fewshot_shrink > fewshot mainly at n = 10, 25.
     Empirical check: adaptation_lambda.csv (lambda vs n), adaptation_curve.csv (fewshot vs fewshot_shrink).
 
@@ -375,3 +386,23 @@ END OF PART 2.
   SERVER_TODO.md) and the prior / lam / prevalence helpers in src/evaluation/cutpoints.py added; tests/test_adaptation.py.
 - **Why**: per-source offsets alone gave only noise-level gains on held-out sites (E3); the contribution is re-centred on
   label-efficient cut-point adaptation of a shared severity score, with the endpoint pre-declared in SERVER_TODO.md E4.
+- **Date**: 2026-11-09
+- **What changed**: S16 P1 corrected (ranking invariance, not AUROC invariance), P2/P3 assumptions made explicit.
+  Step R of SERVER_TODO.md added after two external reviews (ChatGPT, Claude Code) and a literature review of ~90
+  papers: E4 "prevalence" level renamed prevalence_oracle (it used DEV label shares); new tools
+  tools/recalibration_suite.py (MLLS+BCTS, BBSE, Bayes prior correction, UPA, temperature/vector scaling, DEV
+  thresholds, misspecification, clinical operating points, clustered bootstrap, in-distribution control, APTOS
+  near-duplicate sensitivity), tools/shift_decomposition.py (prior shift vs acquisition/annotation shift),
+  tools/fewshot_head.py and modes target_adapt (BN-adapt, TENT) / extract_features. Headline model = CE p3b_joint.
+- **Why**: oracle-prevalence issue and missing baselines raised by both reviews; see claude/review_synthesis_2026-11-09.md
+  in the project.
+- **Date**: 2026-11-11
+- **What changed**: recalibration_suite: bootstrap uncertainty of the annotation-free prior (MLLS+BCTS, BBSE) and
+  uncertainty-aware variants (bagged cut-points; prior shrunk toward the source prior with weight
+  w = 1/(1 + tr Cov_boot / ||pi_hat - pi_src||^2)); joint few-label intervals (draws x clustered TEST bootstrap);
+  MEAN_COMMON rows; referable specificity in the paired comparisons. adaptation_curve: patient/exam-level
+  bootstrap (`bootstrap_unit`). Report: tables table_recal_levels, table_recal_clinical, table_shift_decomposition,
+  table_indist_control, table_aptos_dup; config keys report_recal_tags, report_ordinal (fig11 uses the ordinal run,
+  the headline report_final is the CE run p3b_joint). 140 tests.
+- **Why**: remaining limitations raised by both external reviews (clustered uncertainty, like-for-like averages,
+  uncertainty-aware prevalence as the candidate technical contribution).

@@ -24,6 +24,7 @@ ALL_MODES = [
     'make_softlabels', 'inference_experiment', 'ensemble_experiment',
     'calibrate_conformal', 'phase_select',
     'seed_summary', 'master_table', 'report', 'xai', 'xai_localization',
+    'target_adapt', 'extract_features',
 ]
 
 
@@ -179,6 +180,18 @@ def main():
         assert args.tag, '--tag is required for xai_localization'
         from src.xai.localization import run_xai_localization
         run_xai_localization(cfg)
+
+    elif args.mode == 'target_adapt':
+        # BN-statistics / TENT adaptation of the fold models to every held-out site (unlabelled DEV images only)
+        assert args.tag, '--tag is required for target_adapt'
+        from src.evaluation.target_adapt import run_target_adapt
+        run_target_adapt(cfg)
+
+    elif args.mode == 'extract_features':
+        # pooled features + final linear layer of a CE-head run (input of tools/fewshot_head.py)
+        assert args.tag, '--tag is required for extract_features'
+        from src.evaluation.target_adapt import run_extract_features
+        run_extract_features(cfg)
 
     else:
         raise ValueError(f'Unknown mode: {args.mode}')

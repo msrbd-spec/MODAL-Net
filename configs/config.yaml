@@ -136,6 +136,12 @@ evaluate_only: []            # evaluate_all mode: restrict to these tags (empty 
 bootstrap_ci: 1000           # resamples for the per-metric 95% CIs written to metrics_long.csv (0 = off)
 fewshot_n: [10, 25, 50, 100] # labelled target images used to refit the 4 cut-points (few-shot curve)
 fewshot_draws: 20            # random draws per few-shot size
+# Target-site adaptation baselines (--mode target_adapt; src/evaluation/target_adapt.py). Fixed a priori, never
+# tuned on TEST. Adaptation sees only the UNLABELLED DEV images of each held-out site; TEST is only predicted.
+target_adapt_method: bn      # bn = recompute BatchNorm running statistics on target DEV images (cumulative mean, 1 pass)
+                             # tent = bn, then TENT entropy minimisation of BatchNorm/LayerNorm affine parameters
+tent_lr: 1.0e-4              # tent only: Adam learning rate of the normalisation affine parameters
+tent_epochs: 1               # tent only: passes over the target DEV images (batch = batch_size)
 dedup_exclude_max: 2         # Duplicate exclusion threshold fixed at Hamming ≤ 2 on 2026-11-05, after visual review of 154 candidate pairs
 
 # Selection (phase_select)
@@ -151,6 +157,9 @@ seed_reference: p2b_none     # tag whose seed group is the comparator in seed_co
 # Paper report (--mode report): tags of the final model and of the baseline
 report_final: null
 report_baseline: null
+report_ordinal: p4j_coralsrc_shared   # ordinal (coral_src) run of fig11_source_cutpoints; report_final is used
+                                     # only when this run does not exist (stated in FIGURES_README.txt)
+report_recal_tags: p3b_joint,p10d_ce,p10q_ce   # headline tags of the recalibration tables (results/master/recal)
 
 # XAI Grid & Interpretability
 xai_seed: 0

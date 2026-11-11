@@ -79,8 +79,15 @@ def _to_latex_booktabs(df: pd.DataFrame, highlight_cols: list = None) -> str:
                 for idx in vals[vals == sorted_unique[1]].index:
                     df_str.loc[idx, col] = f"\\underline{{{df_str.loc[idx, col]}}}"
     cols = df_str.columns.tolist()
-    header = " & ".join([str(c).replace('_', '\\_') for c in cols]) + " \\\\\n"
-    rows = [" & ".join(str(v).replace('_', '\\_') if not str(v).startswith('\\') else str(v)
+
+    def _esc(s):
+        s = str(s)
+        for ch in ('_', '%', '&', '#'):
+            s = s.replace(ch, '\\' + ch)
+        return s
+
+    header = " & ".join([_esc(c) for c in cols]) + " \\\\\n"
+    rows = [" & ".join(_esc(v) if not str(v).startswith('\\') else str(v)
                        for v in r.values) + " \\\\\n" for _, r in df_str.iterrows()]
     col_align = "l" + "r" * (len(cols) - 1)
     return ("\\begin{table}[htbp]\n\\centering\n"
@@ -516,6 +523,7 @@ _SIGNATURE_IGNORE = {
     'ckpt_from', 'winner_eligible', 'eval_overwrite', 'evaluate_only', 'bootstrap_ci', 'fewshot_n',
     'fewshot_draws', 'dedup_exclude_max', 'external_sets', 'select_endpoint', 'select_report_only',
     'select_dev_sets', 'tost_margin', 'noninf_margin', 'seed_reference', 'report_final', 'report_baseline',
+    'report_ordinal', 'report_recal_tags',
     'paths', 'num_workers', 'pretrained_fallback', 'grad_checkpointing', 'tta', 'tta_scales',
     'temperature_scaling', 'conformal_alpha', 'recalibrate', 'bundle_from',
 }
@@ -665,6 +673,251 @@ def _model_sets_table(tags, metrics, label_map):
     return pd.DataFrame(rows)
 
 
+# ---------------------------------------------------------------------------
+# Recalibration / label-shift tables (inputs written by tools/recalibration_suite.py and
+# tools/shift_decomposition.py into results/master/recal/)
+# ---------------------------------------------------------------------------
+
+RECAL_DIR = os.path.join('results', 'master', 'recal')
+DEFAULT_RECAL_TAGS = ('p3b_joint', 'p10d_ce', 'p10q_ce')
+RECAL_DATASETS = ('MEAN', 'MEAN_COMMON')          # MEAN_COMMON only when the suite wrote it
+RECAL_FEWSHOT_N = 25
+RECAL_MISSPEC = r'(?:nodr[+-]0\.10|tv0\.10)$'       # misspecified prevalence at 0.10 (No-DR shift +-0.10, TV 0.10)
+ORACLE_LABEL = ' (oracle, upper bound)'
+# (info level in recal_summary.csv, row label); oracle rows always last
+RECAL_LEVELS = (('none', 'none'), ('unlabelled_target', 'unlabelled target'),
+                ('prevalence_other_sites', 'prevalence of other sites'),
+                ('prevalence_misspecified', 'prevalence misspecified (0.10)'),
+                ('n_labels', f'n = {RECAL_FEWSHOT_N} target labels'), ('all_dev_labels', 'all target DEV labels'),
+                ('prevalence_oracle', 'DEV label shares'))
+# (metric key, value column label, difference column label)
+RECAL_METRICS = (('qwk', 'QWK', 'dQWK'), ('f1_macro', 'Macro_F1', 'dMacro_F1'),
+                 ('mild_recall', 'Mild_recall', 'dMild_recall'), ('bin_sens', 'Referable_sens', 'dReferable_sens'),
+                 ('bin_spec', 'Referable_spec', 'dReferable_spec'))
+RECAL_SPECS = (0.90, 0.95, 0.97, 0.99)
+SHIFT_SCENARIOS = ('A0', 'A', 'B', 'C')
+SHIFT_CONTRASTS = ('gain_bayes', 'gain_cuts_over_bayes', 'gain_quantile', 'mlls_recovery')
+
+
+def recal_tags(cfg):
+    """Headline tags of the recalibration tables: cfg report_recal_tags (comma string or list)."""
+    v = (cfg or {}).get('report_recal_tags')
+    if v is None:
+        return list(DEFAULT_RECAL_TAGS)
+    if isinstance(v, str):
+        v = v.split(',')
+    return [str(t).strip() for t in v if str(t).strip()]
+
+
+def _num(v):
+    return pd.to_numeric(pd.Series([v]), errors='coerce').iloc[0]
+
+
+def _f2(v):
+    v = _num(v)
+    return '' if pd.isna(v) else f'{v:.2f}'
+
+
+def _fmt_diff(v, lo, hi):
+    v, lo, hi = _num(v), _num(lo), _num(hi)
+    if pd.isna(v):
+        return ''
+    if pd.isna(lo) or pd.isna(hi):
+        return f'{v:+.2f}'
+    return f'{v:+.2f} [{lo:.2f}, {hi:.2f}]'
+
+
+def _n_label(n):
+    n = _num(n)
+    if pd.isna(n):
+        return ''
+    return 'all' if int(n) == -1 else (str(int(n)) if int(n) > 0 else '')
+
+
+def _recal_level_rows(summ, cmp_df, tag, ds):
+    """Rows of table_recal_levels for one (tag, dataset), grouped by information level, oracle last."""
+    s = summ[(summ['tag'].astype(str) == tag) & (summ['dataset'].astype(str) == ds)].copy()
+    if s.empty:
+        return []
+    s['_n'] = pd.to_numeric(s['n'], errors='coerce')
+    c = pd.DataFrame()
+    if not cmp_df.empty:
+        c = cmp_df[(cmp_df['reference'].astype(str) == 'argmax') & (cmp_df['tag'].astype(str) == tag)
+                   & (cmp_df['dataset'].astype(str) == ds)].copy()
+        c['_n'] = pd.to_numeric(c['n'], errors='coerce')
+    rows = []
+    for info, label in RECAL_LEVELS:
+        sub = s[s['info'].astype(str) == info]
+        if info == 'n_labels':
+            sub = sub[sub['_n'] == RECAL_FEWSHOT_N]
+        elif info == 'prevalence_misspecified':
+            sub = sub[sub['method'].astype(str).str.contains(RECAL_MISSPEC, regex=True)]
+        if info == 'none':                                   # the reference first
+            sub = pd.concat([sub[sub['method'] == 'argmax'], sub[sub['method'] != 'argmax']])
+        for _, r in sub.iterrows():
+            method = str(r['method'])
+            oracle = info == 'prevalence_oracle'
+            row = {'Tag': tag, 'Dataset': ds, 'Information': label + (ORACLE_LABEL if oracle else ''),
+                   'Method': method + (ORACLE_LABEL if oracle else ''), 'n': _n_label(r['_n'])}
+            unit = ''
+            for key, lab, dlab in RECAL_METRICS:
+                col = f'{key}_mean' if f'{key}_mean' in s.columns else key
+                row[lab] = _f2(r.get(col, np.nan))
+                if method == 'argmax':
+                    row[f'{dlab}_vs_argmax_95CI'] = 'reference'
+                    continue
+                d = c[(c['method'].astype(str) == method) & (c['_n'] == r['_n'])
+                      & (c['metric'].astype(str) == key)] if not c.empty else c
+                if d.empty:
+                    row[f'{dlab}_vs_argmax_95CI'] = ''
+                    continue
+                d = d.iloc[0]
+                point = d['diff_point'] if 'diff_point' in d.index and pd.notna(_num(d['diff_point'])) \
+                    else d.get('diff_mean', np.nan)
+                row[f'{dlab}_vs_argmax_95CI'] = _fmt_diff(point, d.get('diff_lo', np.nan), d.get('diff_hi', np.nan))
+                if key == 'qwk':
+                    unit = str(d.get('bootstrap_unit', '')) if pd.notna(d.get('bootstrap_unit', np.nan)) else ''
+            row['Difference_interval'] = 'reference' if method == 'argmax' else unit
+            rows.append(row)
+    return rows
+
+
+def recal_level_table(summ, cmp_df, tags):
+    rows = []
+    for tag in tags:
+        for ds in RECAL_DATASETS:
+            rows += _recal_level_rows(summ, cmp_df, tag, ds)
+    return pd.DataFrame(rows)
+
+
+def recal_clinical_table(bo, tags):
+    """Referable operating points at DEV-chosen specificity targets, per tag (dataset MEAN)."""
+    d = bo[(bo['dataset'].astype(str) == 'MEAN') & (bo['method'].astype(str) == 'dev_threshold_pref')].copy()
+    d['_spec'] = pd.to_numeric(d['target_spec'], errors='coerce')
+    rows = []
+    for tag in tags:
+        for spec in RECAL_SPECS:
+            sub = d[(d['tag'].astype(str) == tag) & np.isclose(d['_spec'], spec)]
+            if sub.empty:
+                continue
+            r = sub.iloc[0]
+            rows.append({'Tag': tag, 'Target_spec_DEV': f'{spec:.2f}',
+                         'Referable_sens_TEST': _f2(r.get('sens')), 'Achieved_spec_TEST': _f2(r.get('spec')),
+                         'Referable_prevalence_TEST': _f2(r.get('test_referable_prevalence')),
+                         'Referrals_per_1000': _f2(r.get('referrals_per_1000')),
+                         'Missed_referable_per_1000': _f2(r.get('missed_referable_per_1000')),
+                         'PPV_at_10': _f2(r.get('ppv_at_0.10')), 'NPV_at_10': _f2(r.get('npv_at_0.10')),
+                         'PPV_at_20': _f2(r.get('ppv_at_0.20')), 'NPV_at_20': _f2(r.get('npv_at_0.20'))})
+    return pd.DataFrame(rows)
+
+
+def shift_decomposition_table(con, tags, metric='qwk'):
+    """Per tag (dataset MEAN) x scenario A0/A/B/C: the prior-shift / cut-point contrasts with intervals."""
+    d = con[(con['dataset'].astype(str) == 'MEAN') & (con['metric'].astype(str) == metric)]
+    rows = []
+    for tag in tags:
+        for scen in SHIFT_SCENARIOS:
+            sub = d[(d['tag'].astype(str) == tag) & (d['scenario'].astype(str) == scen)]
+            if sub.empty:
+                continue
+            row = {'Tag': tag, 'Scenario': scen}
+            R = pd.to_numeric(sub.get('R', pd.Series(dtype=float)), errors='coerce').dropna()
+            row['Draws'] = str(int(R.iloc[0])) if len(R) else ''
+            for name in SHIFT_CONTRASTS:
+                x = sub[sub['contrast'].astype(str) == name]
+                row[name] = _fmt_ci(_num(x['mean'].iloc[0]), _num(x['lo'].iloc[0]), _num(x['hi'].iloc[0])) \
+                    if len(x) else ''
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+INDIST_COLS = (('tag', 'Tag'), ('method', 'Method'), ('aptos_test_n', 'APTOS_test_n'),
+               ('prior_tv_error_vs_aptos_test', 'Prior_TV_error'), ('aptos_test_qwk_argmax', 'APTOS_QWK_argmax'),
+               ('aptos_test_qwk_method', 'APTOS_QWK_method'), ('internal_gain', 'Internal_gain'),
+               ('external_gain', 'External_gain'), ('net_external_gain', 'Net_external_gain'),
+               ('external_sites', 'External_sites'), ('note', 'Note'))
+DUP_COLS = (('tag', 'Tag'), ('subset', 'Subset'), ('method', 'Method'), ('n_excluded', 'n_excluded'), ('n', 'n'),
+            ('qwk', 'QWK'), ('f1_macro', 'Macro_F1'), ('mild_recall', 'Mild_recall'), ('bin_sens', 'Referable_sens'),
+            ('bin_spec', 'Referable_spec'), ('pairs_from', 'Duplicates_from'), ('note', 'Note'))
+_INT_COLS = {'aptos_test_n', 'n_excluded', 'n'}
+
+
+def _select_fmt(df, tags, cols):
+    d = df[df['tag'].astype(str).isin(tags)] if 'tag' in df.columns else df.iloc[0:0]
+    d = d.assign(_o=d['tag'].astype(str).map({t: i for i, t in enumerate(tags)})).sort_values('_o', kind='stable')
+    out = pd.DataFrame(index=range(len(d)))
+    for src, dst in cols:
+        if src not in d.columns:
+            continue
+        vals = d[src].tolist()
+        if src in _INT_COLS:
+            out[dst] = ['' if pd.isna(_num(v)) else str(int(_num(v))) for v in vals]
+        elif pd.api.types.is_numeric_dtype(d[src]):
+            out[dst] = [_f2(v) for v in vals]
+        else:
+            out[dst] = ['' if pd.isna(v) else str(v) for v in vals]
+    return out
+
+
+def build_recal_tables(cfg, save, skipped, recal_dir=RECAL_DIR):
+    """The five recalibration tables; each is skipped (with the reason) when its input file is absent or has
+    no row for the headline tags. Extra columns / rows written by newer tool versions are ignored."""
+    tags = recal_tags(cfg)
+    tag_txt = ','.join(tags)
+    suite = f'run tools/recalibration_suite.py --tags {tag_txt}'
+
+    def need(fname, name, how):
+        p = os.path.join(recal_dir, fname)
+        df = read_csv_safe(p)
+        if df.empty:
+            skipped.append(f'{name}: {p} missing or empty ({how})')
+            return None
+        if 'tag' in df.columns and not df['tag'].astype(str).isin(tags).any():
+            skipped.append(f'{name}: {p} has no row for report_recal_tags={tag_txt}')
+            return None
+        return df
+
+    summ = need('recal_summary.csv', 'table_recal_levels', suite)
+    if summ is not None:
+        cmp_df = read_csv_safe(os.path.join(recal_dir, 'recal_compare.csv'))
+        t = recal_level_table(summ, cmp_df, tags)
+        if t.empty:
+            skipped.append(f'table_recal_levels: recal_summary.csv has no MEAN rows for {tag_txt}')
+        else:
+            note = (f'TEST metrics, dataset MEAN (and MEAN_COMMON when written) over held-out sites; '
+                    f'few-shot at n = {RECAL_FEWSHOT_N} (mean over draws), misspecified prevalence at 0.10 only; '
+                    'd* = difference vs argmax [95 % interval; unit in Difference_interval]; oracle rows last')
+            if cmp_df.empty:
+                note += '; recal_compare.csv missing: difference columns empty'
+            save(t, 'table_recal_levels', note=note)
+    bo = need('binary_operating_points.csv', 'table_recal_clinical', suite)
+    if bo is not None:
+        t = recal_clinical_table(bo, tags)
+        if t.empty:
+            skipped.append('table_recal_clinical: binary_operating_points.csv has no dev_threshold_pref MEAN rows')
+        else:
+            save(t, 'table_recal_clinical', note='threshold on P(grade >= 2) chosen on DEV for the target '
+                 'specificity, sensitivity / specificity achieved on TEST, dataset MEAN; PPV / NPV at 10 % and 20 % '
+                 'referable prevalence')
+    con = need('shift_decomposition_contrasts.csv', 'table_shift_decomposition',
+               f'run tools/shift_decomposition.py --tags {tag_txt}')
+    if con is not None:
+        t = shift_decomposition_table(con, tags)
+        if t.empty:
+            skipped.append('table_shift_decomposition: no MEAN qwk rows for scenarios A0/A/B/C')
+        else:
+            save(t, 'table_shift_decomposition', note='QWK contrasts, dataset MEAN; mean over draws '
+                 '[2.5, 97.5 percentiles of the per-draw contrasts]; A0 / A / B semi-synthetic, C observed')
+    ind = need('indist_control.csv', 'table_indist_control', suite)
+    if ind is not None:
+        save(_select_fmt(ind, tags, INDIST_COLS), 'table_indist_control',
+             note='the same recalibrations inside APTOS (OOF -> APTOS test) vs their external MEAN gain')
+    dup = need('aptos_dup_sensitivity.csv', 'table_aptos_dup', suite)
+    if dup is not None:
+        save(_select_fmt(dup, tags, DUP_COLS), 'table_aptos_dup',
+             note='APTOS test with / without near-duplicates of the training images')
+
+
 def build_paper_tables(master_df: pd.DataFrame = None, out_dir: str = 'results/tables', cfg: dict = None):
     """Build the paper tables from real results only (see TABLES_README.txt in out_dir for what was skipped)."""
     cfg = cfg or {}
@@ -782,6 +1035,8 @@ def build_paper_tables(master_df: pd.DataFrame = None, out_dir: str = 'results/t
     t11 = _cols(runs, {'phase': 'Phase', 'experiment': 'Experiment', 'n_params_M': 'Params_M',
                        'gpu_hours': 'GPU_hours', 'protocol': 'Protocol'})
     _save(t11, 'table11_compute', note='gpu_hours of tags rebuilt by tools/rebuild_oof.py time inference only')
+
+    build_recal_tables(cfg, _save, skipped)
 
     with open(os.path.join(out_dir, 'TABLES_README.txt'), 'w') as f:
         f.write('Paper tables built from real results only.\n\nWritten:\n')

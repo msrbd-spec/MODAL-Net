@@ -180,6 +180,18 @@ def validate_cfg(c):
         f"recalibrate must be 'none' or 'devcut', got {c.get('recalibrate')}"
     assert str(c.get('pretrained_fallback', 'strict')).lower() in ('strict', 'warn'), \
         f"pretrained_fallback must be 'strict' or 'warn', got {c.get('pretrained_fallback')}"
+    assert c.get('target_adapt_method', 'bn') in ('bn', 'tent'), \
+        f"target_adapt_method must be 'bn' or 'tent', got {c.get('target_adapt_method')}"
+    assert float(c.get('tent_lr', 1e-4)) > 0, f"tent_lr must be > 0, got {c.get('tent_lr')}"
+    assert int(c.get('tent_epochs', 1)) >= 1 and float(c.get('tent_epochs', 1)) == int(c.get('tent_epochs', 1)), \
+        f"tent_epochs must be an integer >= 1, got {c.get('tent_epochs')}"
+    ro = c.get('report_ordinal')
+    assert ro is None or (isinstance(ro, str) and ro.strip()), \
+        f"report_ordinal must be a tag (string) or null, got {ro!r}"
+    rt = c.get('report_recal_tags')
+    assert rt is None or (isinstance(rt, str) and rt.strip()) or \
+        (isinstance(rt, (list, tuple)) and rt and all(isinstance(t, str) and t.strip() for t in rt)), \
+        f"report_recal_tags must be a comma-separated string or a list of tags, got {rt!r}"
 
     # XAI validations
     if 'xai_methods' in c and c['xai_methods'] is not None:
@@ -222,7 +234,8 @@ def build_cfg(args):
     base_resolved = resolve(getattr(args, 'base', None))
     base = inherit_resolved or base_resolved
     if base is None and getattr(args, 'mode', None) in \
-            ('test', 'external_validation', 'calibrate_conformal', 'evaluate', 'xai', 'xai_localization'):
+            ('test', 'external_validation', 'calibrate_conformal', 'evaluate', 'xai', 'xai_localization',
+             'target_adapt', 'extract_features'):
         base = getattr(args, 'tag', None)
 
     if base:
