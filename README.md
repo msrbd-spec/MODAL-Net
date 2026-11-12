@@ -19,7 +19,7 @@ pair for your CUDA build, `pip install -r requirements.txt`, then `python tools/
 Offline cluster: `export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` (weights must already be in the cache).
 
 ```bash
-pytest -q        # 140 tests, ~5-15 min on CPU; every test runs in its own temporary folder
+pytest -q        # 147 tests, ~5-15 min on CPU; every test runs in its own temporary folder
 ```
 
 ## 2. Data

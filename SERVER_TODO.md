@@ -1,4 +1,4 @@
-# SERVER TODO — every step of the paper, in order (state of 2026-11-04)
+# SERVER TODO — every step of the paper, in order (state of 2026-11-12)
 
 This file is enough to run the whole project: every command is written here in full, so you do not need
 `commands.md` (it stays as the reference with more background). What can be deleted, and when, is in
@@ -6,6 +6,77 @@ This file is enough to run the whole project: every command is written here in f
 
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
+
+## ▶ TOMORROW (2026-11-13): the last day of experiments — run order, start 09:00, target end ≈ 15:00
+
+Only this box tells you WHAT TO RUN NEXT. The full commands also stay in their sections below (G4, R2, R3, H1,
+H3, H4); this box repeats them in the right order. 4 H100 GPUs are enough. "WAIT" = do not start the next
+block before the check line says everything is DONE.
+
+**Step 0 — 09:00, every new terminal (seconds):**
+```bash
+cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+df -h . | tail -1                                      # must be below ~90 % used
+```
+Check that tonight's jobs finished (R1: 6 + 3 files; H1/H2 of the headline CE model):
+```bash
+ls results/phase*/{p3b_joint,p10d_ce,p10q_ce}/target_adapt/*/summary.csv | wc -l        # expect 6
+ls results/phase*/{p3b_joint,p10d_ce,p10q_ce}/features/head.npz | wc -l                 # expect 3
+ls results/phase*/p3b_joint/xai/xai_localization.csv results/phase8_inference/p8_tta_flip_ce/summary.csv
+```
+Anything missing: look at its log in `outputs/recal/`, `outputs/xai/` or `outputs/phase8_inference/` and
+re-submit only that line from R1 / H1 / H2 (a `tent` job out of memory: add `grad_checkpointing=true` to its `--set`).
+Do this together with Step 1 — there are 4 GPUs.
+
+**Step 1 — 09:05, GPU, start FIRST because it is the longest (≈ 5 h): G4, 4 jobs at once (one per GPU):**
+```bash
+mkdir -p outputs/phase6_domain_gen
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms --inherit p3b_joint --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_nojoint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+```
+After ≈ 10 min look at the first lines of each log (`tail -n 20 outputs/phase6_domain_gen/p6_ms.txt`): a crash
+or out-of-memory shows up early. Out of memory → re-submit that one line with `grad_checkpointing=true` added.
+Also check the style bank of the amplitude-mixing runs (expect ≈ 2000 EyePACS images for the joint runs):
+`grep -i "style bank" outputs/phase6_domain_gen/*.txt logs/p6_*/*.log 2>/dev/null | head`
+(These G4 commands were tested end-to-end on the current code: tests/test_g4_lineage.py.)
+
+**Step 2 — 09:15, CPU, while the GPUs work (≈ 30 min, run these one after the other, in this order):**
+```bash
+# 2a. conformal of the headline CE model (H1) — skip if results/phase8_inference/p8_conformal_ce/ exists
+env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
+# 2b. R2: few-label last-layer fine-tuning (needs the 3 head.npz of Step 0)
+env/bin/python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce
+# 2c. R3: duplicate-audit rows + the main recalibration suite (needs R1 + R2)
+env/bin/python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral,p10d_ce,p10q_ce,p4j_coralsrc_shared
+env/bin/python tools/recalibration_suite.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
+```
+Tick R2, R3 (and H1 if 2a ran) below. Optional: send the daily report now (the R3 result decides the framing).
+
+**Step 3 — WAIT until all 4 G4 runs are DONE (≈ 14:00), then CPU (≈ 10 min):**
+```bash
+for t in p6_amp p6_ms p6_amp_ms p6_amp_nojoint; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
+env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference p3b_joint --set select_report_only=true
+env/bin/python tools/recalibration_suite.py --out_dir results/master/recal_dg --tags p6_amp,p6_ms,p6_amp_ms,p6_amp_nojoint,p3b_joint
+```
+Tick G4.
+
+**Step 4 — H3, the LAST computation (CPU, ≈ 5 min; only after Steps 2 and 3):**
+```bash
+env/bin/python main.py --mode master_table
+env/bin/python main.py --mode seed_summary --reference p3b_joint
+env/bin/python main.py --mode report --set report_final=p3b_joint report_baseline=p2a_plain soft_label_run=sl_p4
+cat results/tables/TABLES_README.txt results/figures/FIGURES_README.txt
+```
+Tick H1, H2, H3.
+
+**Step 5 — share the results for the paper: follow `PAPER_INPUTS.md`** (collect + zip ≈ 1 min, then WinSCP →
+Mac → GitHub; it has a file-by-file backup plan if the zip fails, and a table of what to do if a file is missing).
+
+**Step 6 — H4 (backup + cleanup), only after the zip is safely on the Mac:** the H4 commands below, then
+`SERVER_CLEANUP.md` sections 1, 3, 4 and 6 (never section 2).
 
 ## Daily report (upload these files to Claude once a day)
 
@@ -460,17 +531,30 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_retfound_joint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
   ```
   (CAM-based XAI is not available for this ViT baseline; it is a performance baseline only.)
-- [Skipped] *G4 (optional) — phase 6 domain generalisation, 4 cells, PARALLEL* (≈ 16 GPU h). The first three need E2;
-  `p6_amp_nojoint` has no dependency (wave 5). Report-only selection after all four are DONE:
+- [ ] **G4 (mandatory since 2026-11-12, was optional/skipped) — phase 6 domain generalisation, 4 runs, PARALLEL**
+  (≈ 4 × 4.7 GPU h; ≈ 5 h wall clock on 4 GPUs). Reviewers will ask whether domain-generalisation TRAINING removes
+  the cut-point shift; these runs answer it. Since the headline model is the CE model `p3b_joint`, the three joint
+  arms now inherit `p3b_joint` (before: `@phase4j_label_loss`, the ordinal head) so the comparison is like-for-like.
+  No dependency: can start any time (all inputs exist). All four are report-only (`winner_eligible=false`).
   ```bash
   mkdir -p outputs/phase6_domain_gen   # the -l log paths go in here
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp         --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms          --inherit @phase4j_label_loss --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms      --inherit @phase4j_label_loss --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
-  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_nojoint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none           --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
-  # SEQUENTIAL after all four are DONE:
-  env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference @phase4j_label_loss --set select_report_only=true
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms --inherit p3b_joint --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_nojoint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
   ```
+  Check (all four must say DONE before the next block):
+  ```bash
+  for t in p6_amp p6_ms p6_amp_ms p6_amp_nojoint; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
+  ```
+  Then, SEQUENTIAL (CPU, ≈ 10 min): report-only selection table + the recalibration suite on the DG runs
+  (does the cut-point shift remain after DG training?):
+  ```bash
+  env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference p3b_joint --set select_report_only=true
+  env/bin/python tools/recalibration_suite.py --out_dir results/master/recal_dg --tags p6_amp,p6_ms,p6_amp_ms,p6_amp_nojoint,p3b_joint
+  ```
+  A run out of memory (most likely the MixStyle arms): re-submit only that line with `grad_checkpointing=true`
+  added at the end of its `--set`.
 - Not run any more: phase 7 (feature balance, code removed), the 4-way TTA grid, wavelet gate, `p4_aasl` / `p4_aasl_emd` on the old lineage.
 - [✅] Back up (command in 0.2).
 

@@ -282,7 +282,7 @@ S14. TESTS AND ACCEPTANCE (tests/; run before reporting)
   report-only) -> master_table -> seed grouping -> report from real data -> cut-point and leakage tools -> XAI grid on an external set and expert-mask
   localisation. T17-T22 (tests/test_external_and_config.py): strict --set, validate_cfg, xlsx reader, official-split frames, frozen splits with
   duplicate exclusion, missing dataset fails, QWK == sklearn and cut-point recovery of a shifted scorer, AASL / mixup hard stops, zoo full1744 columns.
-  T7 report tests: without runs, no table or figure may be written. Expected: 140 passed (incl. tests/test_recalibration.py, tests/test_target_adapt.py, tests/test_shift_decomposition.py, tests/test_adaptation.py, tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
+  T7 report tests: without runs, no table or figure may be written. Expected: 147 passed (incl. tests/test_g4_lineage.py, tests/test_recalibration.py, tests/test_target_adapt.py, tests/test_shift_decomposition.py, tests/test_adaptation.py, tests/test_selection_fallbacks.py and tests/test_zz_guard_check.py, rewritten 2026-11-04 for the amended endpoint and the tmp-folder isolation).
 
 S15. RISKS AND THINGS TO VERIFY FIRST
   - MaxViT timm id / image size / offline cache; module names (stem, stages.i) for LLRD and MixStyle hooks; whether the zoo used another MaxViT-L variant; GPU memory at 512 px (use grad_checkpointing / grad_accum).

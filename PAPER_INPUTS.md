@@ -30,7 +30,7 @@ take results/master/master_full.csv results/master/master_table.csv results/mast
 
 # C. selection decision of every phase (pre-specified rule + amendment)
 for P in phase2a_recipe phase2b_preprocess phase3a_pretrain phase3b_joint phase4_label_loss phase4j_label_loss \
-         phase5_architecture phase10_ms_ddr phase10_ms_deepdrid; do
+         phase5_architecture phase6_domain_gen phase10_ms_ddr phase10_ms_deepdrid; do
   take results/$P/phase_table.csv results/$P/WINNER.txt
 done
 take "results/phase*/phase_table_amended.csv" "results/phase*/phase_table_original.csv"
@@ -40,8 +40,8 @@ take results/master/cutpoint_diagnostic.csv results/master/adaptation_compare.cs
      results/master/adaptation_lambda.csv results/master/adaptation_seeds/adaptation_compare.csv \
      results/master/adaptation_seeds/adaptation_curve.csv results/master/adaptation_seeds/adaptation_lambda.csv
 
-# E. step R: recalibration suite (main / seeds / backbones), shift decomposition, few-label head
-for D in results/master/recal results/master/recal_seeds results/master/recal_backbones; do
+# E. step R: recalibration suite (main / seeds / backbones / domain generalisation), shift decomposition, few-label head
+for D in results/master/recal results/master/recal_seeds results/master/recal_backbones results/master/recal_dg; do
   take $D/recal_summary.csv $D/recal_compare.csv $D/recal_fitted.csv $D/recal_notes.csv \
        $D/prevalence_estimates.csv $D/binary_operating_points.csv $D/ordinal_discrimination.csv \
        $D/indist_control.csv $D/aptos_dup_sensitivity.csv
@@ -54,7 +54,8 @@ take results/master/recal/shift_decomposition.csv results/master/recal/shift_dec
 for R in phase3b_joint/p3b_joint phase2a_recipe/p2a_plain phase2b_preprocess/p2b_none \
          phase4j_label_loss/p4j_coralsrc_shared phase10_ms_ddr/p10d_ce phase10_ms_deepdrid/p10q_ce \
          phase5_architecture/p5_retfound phase5_architecture/p5_retfound_joint \
-         phase5_architecture/p5_convnextv2 phase5_architecture/p5_effnetv2; do
+         phase5_architecture/p5_convnextv2 phase5_architecture/p5_effnetv2 \
+         phase6_domain_gen/p6_amp phase6_domain_gen/p6_ms phase6_domain_gen/p6_amp_ms phase6_domain_gen/p6_amp_nojoint; do
   take results/$R/summary.csv results/$R/metrics_long.csv results/$R/per_class.csv results/$R/binary.csv \
        results/$R/calibration.csv "results/$R/confusion_*.csv" results/$R/cutpoints.csv results/$R/fewshot.csv
   take checkpoints/$(basename $R)/config_snapshot.yaml
@@ -95,6 +96,24 @@ echo "collected $n files, $m missing -> $(du -h paper_inputs.zip | cut -f1)  $(p
    none of these files should be near that; if the zip is larger than ≈ 100 MB, tell Claude first.)
 3. Tell Claude "paper inputs pushed" and paste the `MISSING.txt` content (or "none").
 
+### Backup plan if the zip step fails
+
+- **Plan B (tar instead of zip)** — on the server: `tar czf paper_inputs.tgz paper_inputs`. Download
+  `paper_inputs.tgz` with WinSCP the same way; on the Mac use `tar xzf paper_inputs.tgz` instead of `unzip`.
+- **Plan C (no archive at all)** — WinSCP can copy whole folders: in the right-hand (server) panel open
+  `/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR`, drag the folder `paper_inputs` (it was already
+  filled by section 1 even if the zip failed) to the left-hand (PC) panel. WinSCP keeps the sub-folders. If a
+  transfer stops half-way, drag the same folder again and choose "Overwrite" or "Newer only".
+- **Plan D (one folder at a time)** — if a whole-folder copy keeps failing, copy these folders one by one from
+  `paper_inputs/` with WinSCP, in this order (smallest first): `paper_inputs/results/master`,
+  `paper_inputs/results/phase*` (each phase folder), `paper_inputs/results/tables`, `paper_inputs/results/figures`,
+  `paper_inputs/checkpoints`, `paper_inputs/splits`, then the loose files (`SERVER_TODO.md`, ...,
+  `MISSING.txt`). Keep the same folder structure on the PC (create the folders with the same names).
+- Whatever plan you use, the Mac must end with a folder `MODAL-Net/paper_inputs/` that has the same sub-folders
+  as on the server; then run the `git add paper_inputs ...` lines above.
+- **Do NOT add the Mac's own `results/` folder to git** (`git status` may show it as untracked — that is the
+  local copy; only `paper_inputs/` is shared).
+
 ## 3. What each part is used for
 
 | Part | Paper section |
@@ -103,7 +122,7 @@ echo "collected $n files, $m missing -> $(du -h paper_inputs.zip | cut -f1)  $(p
 | B | Main results (5-class + referable, internal + 4 external sets, CIs), seed variability |
 | C | Training-side experiments, pre-specified selection rule and its documented amendment |
 | D | Cut-point shift diagnostic, few-label adaptation curve, shrinkage λ vs n |
-| E | Main contribution: annotation-free / few-label recalibration vs baselines, clinical operating points, shift decomposition, in-distribution control, APTOS near-duplicate sensitivity, seeds, backbones |
+| E | Main contribution: annotation-free / few-label recalibration vs baselines, clinical operating points, shift decomposition, in-distribution control, APTOS near-duplicate sensitivity, seeds, backbones, and whether domain-generalisation training removes the cut-point shift (recal_dg) |
 | F | Per-class / binary / calibration details, confusion matrices, BN-adapt / TENT, XAI localisation, exact training configuration |
 | G | Conformal prediction and test-time augmentation |
 | H | The final paper tables and figures |
@@ -122,6 +141,7 @@ Find the folder of the missing path below, run the step that writes it (`SERVER_
 | `results/master/recal/shift_decomposition*` | R4 | R4 command |
 | `results/master/recal/fewshot_head_*` | R2 | R2 command (needs the R1 `extract_features` jobs) |
 | `results/master/recal_seeds/`, `recal_backbones/` | R5 | R5 commands |
+| `results/master/recal_dg/`, `results/phase6_domain_gen/...` | G4 (TODO "TOMORROW" Step 1 + Step 3) | the G4 job of that run, then Step 3 |
 | `results/<phase>/<tag>/target_adapt/`, `reproduction_check.csv` | R1 | the matching R1 job (`target_adapt` bn/tent or `extract_features`) |
 | `results/<phase>/<tag>/xai/` | H2 | the matching H2 job |
 | `results/phase8_inference/...` | H1 | the matching H1 line |
@@ -133,4 +153,4 @@ Find the folder of the missing path below, run the step that writes it (`SERVER_
 
 Some files are optional and may legitimately be missing: `phase_table_amended.csv` / `phase_table_original.csv`
 exist only for phases selected under both endpoints; `results/phase8_inference/p8_tta_flip*` only if H1 TTA ran;
-`p5_*` runs only if G3/G3b ran. If unsure, send `MISSING.txt` to Claude before re-running anything.
+`p5_*` runs only if G3/G3b ran; `p6_*` runs and `recal_dg/` only after G4. If unsure, send `MISSING.txt` to Claude before re-running anything.
