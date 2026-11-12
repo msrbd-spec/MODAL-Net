@@ -31,7 +31,7 @@ skipped without breaking anything later.
 | 3 | `results/<phase>/phase_table.csv` | each phase selected since the last report (E2: `phase4j_label_loss`; E3: `phase10_ms_ddr`, `phase10_ms_deepdrid`) |
 | 4 | `results/master/adaptation_compare.csv`, `adaptation_curve.csv` and `adaptation_lambda.csv` | after E4 |
 | 5 | `results/master/adaptation_seeds/adaptation_compare.csv` and `.../adaptation_curve.csv` | after the E4 seed re-run (needs F2c) |
-| 6 | `results/master/recal/` — all `*.csv` except `recal_draws.csv` (large) | after R3 / R4 (and `results/master/recal_seeds/`, `recal_backbones/` after R5) |
+| 6 | `results/master/recal/`, `recal_seeds/`, `recal_backbones/` — all `*.csv` except every `recal_draws.csv` (large) | after R3 / R4 / R5 |
 
 **Next report (when E3, F1, F2a, F2b and F2c are finished), step by step:**
 1. Check:
@@ -378,7 +378,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   ```
   (If the old F1 / G1 / G2 `--mode experiment` lines were already submitted, let them finish: a re-run skips the
   finished folds and only evaluates, so the result is the same.)
-- [] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
+- [✅] **F2 (mandatory) — seeds 1 and 2 of the headline configurations, PARALLEL** (≈ 10 runs, ≈ 44 GPU h).
   Three groups with different start conditions:
   ```bash
   # ✅ F2a: baseline seeds, no dependency -> submit in wave 5 together with E1 / E3
@@ -416,7 +416,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   for t in p3c_joint_s2 p3c_coral_s2 p3c_sup_s2 p9_base_s1 p9_base_s2 p4j_coralsrc_s1 p4j_coralsrc_s2 p4j_coralsrc_shared_s1 p4j_coralsrc_shared_s2 p10d_ce_s1 p10d_ce_s2 p10d_coralsrc_s1 p10d_coralsrc_s2; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
   env/bin/python main.py --mode seed_summary --reference p3b_joint
   ```
-- [ ] Back up (command in 0.2).
+- [✅] Back up (command in 0.2).
 
 ## G. Mechanism and secondary arms
 
@@ -430,7 +430,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   mkdir -p outputs/phase3c_jointsup
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase3c_jointsup/p3c_joint_sup.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase3c_jointsup --tag p3c_joint_sup --inherit p3b_joint --set pretrain_path=checkpoints/pretrain/eyepacs_sup_v1.pth winner_eligible=false
   ```
-- [ ] *G3 (optional, recommended) — phase 5 architectures on the new lineage* (≈ 12 GPU h). Reviewers ask whether
+- [✅] *G3 (optional, recommended) — phase 5 architectures on the new lineage* (≈ 12 GPU h). Reviewers ask whether
   the effect depends on the backbone. Needs E2. The two training lines are PARALLEL; the ensemble needs both DONE;
   the selection needs the ensemble DONE:
   ```bash
@@ -460,7 +460,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_retfound_joint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
   ```
   (CAM-based XAI is not available for this ViT baseline; it is a performance baseline only.)
-- [ ] *G4 (optional) — phase 6 domain generalisation, 4 cells, PARALLEL* (≈ 16 GPU h). The first three need E2;
+- [Skipped] *G4 (optional) — phase 6 domain generalisation, 4 cells, PARALLEL* (≈ 16 GPU h). The first three need E2;
   `p6_amp_nojoint` has no dependency (wave 5). Report-only selection after all four are DONE:
   ```bash
   mkdir -p outputs/phase6_domain_gen   # the -l log paths go in here
@@ -472,7 +472,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference @phase4j_label_loss --set select_report_only=true
   ```
 - Not run any more: phase 7 (feature balance, code removed), the 4-way TTA grid, wavelet gate, `p4_aasl` / `p4_aasl_emd` on the old lineage.
-- [ ] Back up (command in 0.2).
+- [✅] Back up (command in 0.2).
 
 ## R. Reviewer-requested analyses (independent reviews of 2026-11-09)
 
@@ -487,13 +487,13 @@ only READ finished checkpoints. The headline model of the paper becomes the CE m
 Order: R0 → R1 (GPU, can start right away, in parallel with the jobs that are still running) → R2 → R3 → R4.
 R5 waits for F2c, G3 and G3b.
 
-- [ ] **R0 (mandatory) — bring the new code and test it.** On the Mac: the B1 `rsync` line. On the server:
+- [✅] **R0 (mandatory) — bring the new code and test it.** On the Mac: the B1 `rsync` line. On the server:
   ```bash
   env/bin/python -m pytest -q -p no:warnings          # expected: 140 passed (≈ 10–15 min on CPU)
   ```
   No model download is needed for step R.
 
-- [ ] **R1 (mandatory, GPU, 9 jobs, PARALLEL; ≈ 0.3–1 GPU h each)** — target-site adaptation baselines and
+- [🔃] **R1 (mandatory, GPU, 9 jobs, PARALLEL; ≈ 0.3–1 GPU h each)** — target-site adaptation baselines and
   penultimate features, for the three CE runs. Each job only READS the finished checkpoints and writes into
   `results/<phase>/<tag>/target_adapt/` or `.../features/`; the run's own result files are never touched.
   ```bash
@@ -516,7 +516,7 @@ R5 waits for F2c, G3 and G3b.
     ```
     (6 `summary.csv` + 3 `head.npz` = done.)
 
-- [ ] **R2 (mandatory, CPU, ≈ 5 min) — few-label last-layer fine-tuning baseline** (needs the 3 `features` jobs of R1):
+- [] **R2 (mandatory, CPU, ≈ 5 min) — few-label last-layer fine-tuning baseline** (needs the 3 `features` jobs of R1):
   ```bash
   env/bin/python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce
   ```
@@ -540,7 +540,7 @@ R5 waits for F2c, G3 and G3b.
   prevalence_oracle, prevalence_other_sites, prevalence_misspecified, n_labels, all_dev_labels). Rows with
   "oracle" in the method name are upper bounds only. `recal_notes.csv` lists everything skipped and why.
 
-- [ ] **R4 (mandatory, CPU, ≈ 5–15 min) — controlled shift decomposition** (independent of R1–R3):
+- [✅] **R4 (mandatory, CPU, ≈ 5–15 min) — controlled shift decomposition** (independent of R1–R3):
   ```bash
   env/bin/python tools/shift_decomposition.py --tags p3b_joint,p10d_ce,p10q_ce
   ```
@@ -551,7 +551,7 @@ R5 waits for F2c, G3 and G3b.
   Read the contrasts B−A0 and C−A (annotation/acquisition effect at equal grade shares) and A−A0, C−B
   (prior-shift effect). A0/A/B are semi-synthetic resamplings of saved predictions (stated in the paper).
 
-- [ ] **R5 (mandatory, CPU) — replicate R3 on seeds and backbones** (after F2c, G3 and G3b are DONE; separate
+- [✅] **R5 (mandatory, CPU) — replicate R3 on seeds and backbones** (after F2c, G3 and G3b are DONE; separate
   folders, nothing is overwritten):
   ```bash
   env/bin/python tools/recalibration_suite.py --out_dir results/master/recal_seeds --tags p3c_joint_s1,p3c_joint_s2,p10d_ce_s1,p10d_ce_s2,p10d_coralsrc_s1,p10d_coralsrc_s2
@@ -598,6 +598,11 @@ H3 must be the very last computation.
   mkdir -p outputs/phase8_inference   # the -l log paths go in here
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip --base $FINAL --set tta=flip
   env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal --base $FINAL --set conformal_alpha=0.10
+  ```
+  Headline CE model `p3b_joint` (same two products; conformal is CPU, TTA is 1 GPU job — can be submitted together with R1):
+  ```bash
+  env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
+  phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip_ce --base p3b_joint --set tta=flip
   ```
 - [🔃] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
   GPU, the four jobs are PARALLEL:
