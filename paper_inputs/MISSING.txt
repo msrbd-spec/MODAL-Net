@@ -1,0 +1,4 @@
+results/phase4_label_loss/phase_table.csv
+results/phase4_label_loss/WINNER.txt
+results/phase6_domain_gen/phase_table.csv
+results/phase6_domain_gen/WINNER.txt

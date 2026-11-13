@@ -1,0 +1,162 @@
+alpha_max: 0.4
+amp_beta_max: 0.1
+amp_beta_min: 0.01
+amp_mix: false
+amp_prob: 0.5
+amp_stage: pre
+aug: basic
+backbone: maxvit_large_tf_512.in1k
+backbone_global_pool: null
+base: null
+batch_size: 8
+bootstrap_ci: 1000
+bundle_from: null
+ckpt_from: null
+conformal_alpha: 0.1
+cutmix_alpha: 1.0
+dedup_exclude_max: 2
+description: null
+drop_path: 0.3
+ema_decay: 0.0
+epochs: 30
+eval_overwrite: false
+evaluate_only: []
+external_sets:
+- messidor
+- ddr
+- deepdrid
+- idrid
+extra_sources:
+- eyepacs
+- ddr
+eyepacs_max: 20000
+fewshot_draws: 20
+fewshot_n:
+- 10
+- 25
+- 50
+- 100
+freeze_epochs: 1
+grad_accum: 2
+grad_checkpointing: false
+grad_clip: 1.0
+head_dropout: 0.3
+head_mult: 10
+head_type: softmax
+img_size: 512
+img_size_arg: null
+inherit: p3b_joint
+inner_epochs: 15
+inner_k: 4
+joint_eyepacs: false
+joint_w: 0.5
+kfold_seed: 42
+kind: null
+lambda_emd: 1.0
+llrd: 0.8
+loss: ce
+lr: 0.0001
+members: null
+method: null
+mix_prob: 0.0
+mixstyle: false
+mixup_alpha: 0.2
+ms_alpha: 0.1
+ms_p: 0.5
+ms_stages:
+- 0
+- 1
+n_folds: 5
+noninf_margin: 0.005
+num_classes: 5
+num_workers: 8
+ordinal_eps: 0.0
+ordinal_sigma: 0.7
+paths:
+  aptos:
+    test_csv: datasets/APTOS_19/test.csv
+    test_images: datasets/APTOS_19/test_images
+    train_csv: datasets/APTOS_19/train_1.csv
+    train_images: datasets/APTOS_19/train_images
+    val_csv: datasets/APTOS_19/valid.csv
+    val_images: datasets/APTOS_19/val_images
+  ddr:
+    lesion_root: datasets/DDR-dataset/lesion_segmentation
+    root: datasets/DDR-dataset/DR_grading
+  deepdrid:
+    root: datasets/DeepDRiD/regular_fundus_images
+    test_dir: Online-Challenge1_2-Evaluation
+    test_labels: Challenge1_labels.xlsx
+    train_csv: regular-fundus-training.csv
+    train_dir: regular-fundus-training
+    val_csv: regular-fundus-validation.csv
+    val_dir: regular-fundus-validation
+  eyepacs:
+    images: datasets/EyePACS/EyePACS
+    labels_csv: datasets/EyePACS/trainLabels.csv/trainLabels.csv
+    lesion_labels: datasets/EyePACS/lesion_labels
+  idrid:
+    lesion_root: datasets/IDRiD/A. Segmentation
+    root: datasets/IDRiD/B. Disease Grading
+    test_csv: 2. Groundtruths/b. IDRiD_Disease Grading_Testing Labels.csv
+    test_images: 1. Original Images/b. Testing Set
+    train_csv: 2. Groundtruths/a. IDRiD_Disease Grading_Training Labels.csv
+    train_images: 1. Original Images/a. Training Set
+  messidor:
+    csv: datasets/Messidor_2/messidor_data.csv
+    images: datasets/Messidor_2/images
+patience: 8
+phase: phase10_ms_ddr
+pre_epochs: 15
+preproc: none
+pretrain_path: null
+pretrained: true
+pretrained_fallback: strict
+recalibrate: none
+report_baseline: null
+report_final: null
+sam_rho: 0.05
+seed: 0
+seed_reference: p2b_none
+select_dev_sets:
+- messidor
+- ddr
+- deepdrid
+- idrid
+select_endpoint: amended
+select_report_only: false
+set_overrides: '{"joint_eyepacs": false, "extra_sources": ["eyepacs", "ddr"]}'
+soft_label_run: null
+soft_labels: none
+source_max: 20000
+source_w: 0.5
+src_offset_l2: 0.1
+src_offsets: true
+ssl_init: null
+style_bank_size: 2000
+tag: p10d_ce
+temperature_scaling: true
+tost_margin: 0.01
+tta: none
+tta_scales:
+- 1.0
+uda_style_pool: none
+use_sam: false
+use_wghr: false
+warmup_epochs: 2
+weight_decay: 0.05
+winner_eligible: true
+xai_alpha: 0.5
+xai_loc_dilate: 15
+xai_loc_method: gradcampp
+xai_methods:
+- gradcampp
+- gradcam
+- layercam
+- eigencam
+xai_quant: false
+xai_quant_max_images: 400
+xai_seed: 0
+xai_show_lesions: true
+xai_split: test
+xai_top_k: 10

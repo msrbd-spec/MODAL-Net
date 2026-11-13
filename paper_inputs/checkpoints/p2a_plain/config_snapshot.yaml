@@ -1,0 +1,107 @@
+alpha_max: 0.4
+amp_beta_max: 0.1
+amp_beta_min: 0.01
+amp_mix: false
+amp_prob: 0.5
+amp_stage: pre
+aug: basic
+backbone: maxvit_large_tf_512.in1k
+base: null
+batch_size: 8
+bundle_from: null
+ckpt_from: null
+conformal_alpha: 0.1
+cutmix_alpha: 1.0
+drop_path: 0.0
+ema_decay: 0.0
+epochs: 30
+eyepacs_max: 20000
+freeze_epochs: 1
+grad_accum: 2
+grad_checkpointing: false
+grad_clip: 1.0
+head_dropout: 0.0
+head_mult: 10
+head_type: softmax
+img_size: 512
+img_size_arg: null
+inherit: None
+inner_epochs: 15
+inner_k: 4
+joint_eyepacs: false
+joint_w: 0.5
+kfold_seed: 42
+kind: null
+lambda_emd: 1.0
+llrd: 1.0
+loss: ce
+lr: 0.0001
+members: null
+method: null
+mix_prob: 0.0
+mixstyle: false
+mixup_alpha: 0.2
+ms_alpha: 0.1
+ms_p: 0.5
+ms_stages:
+- 0
+- 1
+n_folds: 5
+num_classes: 5
+num_workers: 8
+ordinal_eps: 0.0
+ordinal_sigma: 0.7
+paths:
+  aptos:
+    test_csv: datasets/APTOS_19/test.csv
+    test_images: datasets/APTOS_19/test_images
+    train_csv: datasets/APTOS_19/train_1.csv
+    train_images: datasets/APTOS_19/train_images
+    val_csv: datasets/APTOS_19/valid.csv
+    val_images: datasets/APTOS_19/val_images
+  eyepacs:
+    images: datasets/EyePACS/EyePACS
+    labels_csv: datasets/EyePACS/trainLabels.csv/trainLabels.csv
+    lesion_labels: datasets/EyePACS/lesion_labels
+  messidor:
+    csv: datasets/Messidor_2/messidor_data.csv
+    images: datasets/Messidor_2/images
+patience: 8
+phase: phase2a_recipe
+pre_epochs: 15
+preproc: legacy
+pretrain_path: null
+pretrained_fallback: strict
+recalibrate: none
+sam_rho: 0.05
+seed: 0
+set_overrides: '{"loss": "ce", "drop_path": 0.0, "head_dropout": 0.0, "llrd": 1.0,
+  "mix_prob": 0.0, "ordinal_eps": 0.0, "ema_decay": 0.0, "aug": "basic", "preproc":
+  "legacy"}'
+soft_label_run: null
+soft_labels: none
+ssl_init: null
+style_bank_size: 2000
+tag: p2a_plain
+temperature_scaling: true
+tta: none
+tta_scales:
+- 1.0
+uda_style_pool: none
+use_sam: false
+use_wghr: false
+warmup_epochs: 2
+weight_decay: 0.05
+winner_eligible: true
+xai_alpha: 0.5
+xai_methods:
+- gradcampp
+- gradcam
+- layercam
+- eigencam
+xai_quant: false
+xai_quant_max_images: 400
+xai_seed: 0
+xai_show_lesions: true
+xai_split: test
+xai_top_k: 10
