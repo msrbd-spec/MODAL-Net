@@ -1,0 +1,13 @@
+Tag,Subset,Method,n_excluded,n,QWK,Macro_F1,Mild_recall,Referable_sens,Referable_spec,Duplicates_from,Note
+p3b_joint,all,argmax,26,366,0.94,0.73,0.57,0.97,0.95,"results/master/leakage_pairs.csv rows of tag p3b_joint, all training sources (APTOS)",
+p3b_joint,all,default_cuts,26,366,0.93,0.63,0.47,0.99,0.93,"results/master/leakage_pairs.csv rows of tag p3b_joint, all training sources (APTOS)",
+p3b_joint,excl_dups_of_training_pool,argmax,26,340,0.95,0.75,0.57,0.97,0.95,"results/master/leakage_pairs.csv rows of tag p3b_joint, all training sources (APTOS)",
+p3b_joint,excl_dups_of_training_pool,default_cuts,26,340,0.94,0.64,0.46,0.98,0.93,"results/master/leakage_pairs.csv rows of tag p3b_joint, all training sources (APTOS)",
+p10d_ce,all,argmax,27,366,0.93,0.69,0.53,0.96,0.94,"results/master/leakage_pairs.csv rows of tag p10d_ce, all training sources (APTOS,DDR)",
+p10d_ce,all,default_cuts,27,366,0.93,0.62,0.47,0.97,0.93,"results/master/leakage_pairs.csv rows of tag p10d_ce, all training sources (APTOS,DDR)",
+p10d_ce,excl_dups_of_training_pool,argmax,27,339,0.93,0.70,0.54,0.97,0.94,"results/master/leakage_pairs.csv rows of tag p10d_ce, all training sources (APTOS,DDR)",
+p10d_ce,excl_dups_of_training_pool,default_cuts,27,339,0.94,0.62,0.46,0.97,0.93,"results/master/leakage_pairs.csv rows of tag p10d_ce, all training sources (APTOS,DDR)",
+p10q_ce,all,argmax,26,366,0.93,0.71,0.50,0.98,0.93,"results/master/leakage_pairs.csv rows of tag p10q_ce, all training sources (APTOS)",
+p10q_ce,all,default_cuts,26,366,0.93,0.59,0.43,0.99,0.93,"results/master/leakage_pairs.csv rows of tag p10q_ce, all training sources (APTOS)",
+p10q_ce,excl_dups_of_training_pool,argmax,26,340,0.94,0.72,0.50,0.97,0.93,"results/master/leakage_pairs.csv rows of tag p10q_ce, all training sources (APTOS)",
+p10q_ce,excl_dups_of_training_pool,default_cuts,26,340,0.93,0.60,0.43,0.99,0.93,"results/master/leakage_pairs.csv rows of tag p10q_ce, all training sources (APTOS)",
