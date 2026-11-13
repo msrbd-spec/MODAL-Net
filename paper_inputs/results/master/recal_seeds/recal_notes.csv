@@ -1,0 +1,8 @@
+tag,dataset,method,note
+"p3c_joint_s1,p3c_joint_s2,p10d_ce_s1,p10d_ce_s2,p10d_coralsrc_s1,p10d_coralsrc_s2",MEAN_COMMON,-,"MEAN_COMMON = unweighted mean over the held-out datasets analysed for EVERY tag (intersection): messidor,deepdrid,idrid; per-tag held-out sets: p3c_joint_s1: messidor,ddr,deepdrid,idrid; p3c_joint_s2: messidor,ddr,deepdrid,idrid; p10d_ce_s1: messidor,deepdrid,idrid; p10d_ce_s2: messidor,deepdrid,idrid; p10d_coralsrc_s1: messidor,deepdrid,idrid; p10d_coralsrc_s2: messidor,deepdrid,idrid"
+p3c_joint_s1,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p3c_joint_s1
+p3c_joint_s2,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p3c_joint_s2
+p10d_ce_s1,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p10d_ce_s1
+p10d_ce_s2,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p10d_ce_s2
+p10d_coralsrc_s1,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p10d_coralsrc_s1
+p10d_coralsrc_s2,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p10d_coralsrc_s2
