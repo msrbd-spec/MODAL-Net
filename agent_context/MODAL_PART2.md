@@ -406,3 +406,11 @@ END OF PART 2.
   the headline report_final is the CE run p3b_joint). 140 tests.
 - **Why**: remaining limitations raised by both external reviews (clustered uncertainty, like-for-like averages,
   uncertainty-aware prevalence as the candidate technical contribution).
+- **Date**: 2026-11-13
+- **What changed**: new post-hoc exploratory tool tools/shift_detector.py (R6 of SERVER_TODO.md): label-free
+  disagreement D_mb = TV(pi_MLLS, pi_BBSE) on the unlabelled DEV split as a detector of when prior correction is
+  unsafe, on the scenarios of tools/shift_decomposition.py; AUROC with clustered bootstrap, leave-one-site-out
+  gating; tests/test_shift_detector.py.
+- **Why**: step R pre-declared Primary 1/2 failed (MLLS+BCTS quantile and Bayes lowered external QWK); the shift
+  decomposition showed MLLS works under pure prior shift (A) and fails under acquisition/annotation shift (B, C).
+  Reported as exploratory, not pre-registered.

@@ -126,6 +126,7 @@ python main.py --mode extract_features --tag p3b_joint                          
 python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce                        # CPU; needs extract_features
 python tools/recalibration_suite.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared   # CPU
 python tools/shift_decomposition.py --tags p3b_joint,p10d_ce,p10q_ce                 # CPU
+python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared  # CPU; post-hoc (R6)
 ```
 
 Cut-point adaptation to new sites (CPU, minutes; held-out sites only; levels: argmax, grade distribution only,

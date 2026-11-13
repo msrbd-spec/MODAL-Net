@@ -1,4 +1,4 @@
-# SERVER TODO — every step of the paper, in order (state of 2026-11-12)
+# SERVER TODO — every step of the paper, in order (state of 2026-11-13)
 
 This file is enough to run the whole project: every command is written here in full, so you do not need
 `commands.md` (it stays as the reference with more background). What can be deleted, and when, is in
@@ -7,7 +7,70 @@ This file is enough to run the whole project: every command is written here in f
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
 
-## ▶ TOMORROW (2026-11-13): the last day of experiments — run order, start 09:00, target end ≈ 15:00
+## ▶ NEXT (Monday 2026-11-16): R6 shift detector — CPU only, ≈ 30 min in total, no GPU, no zip
+
+Only this box tells you WHAT TO RUN NEXT. One new analysis, post-hoc / exploratory (not in the pre-declared
+rules): does the disagreement between the two label-free prior estimates (MLLS and BBSE) tell, WITHOUT any target
+label, when the label-free correction would hurt? Details and the pre-declared reading: R6 below and the docstring
+of `tools/shift_detector.py`. Nothing else has to be re-run; every other result is already on GitHub.
+
+**Step 0 — on the Mac (≈ 2 min): push, then copy the code to the server.**
+Claude already put the new code in the Mac repo and committed it (2026-11-13: `tools/shift_detector.py`,
+`tests/test_shift_detector.py`, this file, `commands.md`, `agent_context/MODAL_PART2.md`; 7 redundant `.gitkeep`
+files removed — `checkpoints/pretrain/`, `logs/`, `softlabels/` keep theirs). If `git log -1` does not show the
+"R6" commit, tell Claude. Push it (password = your GitHub token):
+```bash
+cd /Users/meheraj/Documents/MODAL-Net
+git log --oneline -1
+git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
+```
+Then copy the code to the server with the B1 `rsync` line (section B; code only, never `results/` or `splits/`).
+
+**Step 1 — on the server (≈ 2 min): test the new code.**
+```bash
+cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
+env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py
+```
+Expected: `19 passed`. Anything else: stop and paste the output to Claude.
+
+**Step 2 — on the server (CPU, ≈ 10–20 min): run R6.**
+```bash
+env/bin/python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
+```
+It prints the AUROC table, the PRIMARY line and the gating table at the end. Copy the whole printed output (from
+"AUROC, ALL tags pooled" to the "written:" line) — it goes to Claude in Step 4. Tick R6 below.
+
+**Step 3 — bring the 6 small files to GitHub (WinSCP, ≈ 5 min; together < 3 MB, so no zip).**
+In WinSCP, on the server side, open `/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR` and drag these files
+to the PC, then move them to the Mac into the SAME folder names under `paper_inputs/`:
+
+| Server file (under `.../envs/DR/`) | Mac destination (under `MODAL-Net/`) |
+|---|---|
+| `results/master/recal/shift_detector_summary.csv` | `paper_inputs/results/master/recal/` |
+| `results/master/recal/shift_detector_gating.csv` | `paper_inputs/results/master/recal/` |
+| `results/master/recal/shift_detector_draws.csv` | `paper_inputs/results/master/recal/` |
+| `results/master/recal/shift_detector_notes.csv` | `paper_inputs/results/master/recal/` |
+| `results/figures/fig_shift_detector.png` | `paper_inputs/results/figures/` |
+| `results/figures/fig_shift_detector.pdf` | `paper_inputs/results/figures/` |
+
+Check on the Mac that all 6 are there (each line must print a size, none "No such file"), then push:
+```bash
+cd /Users/meheraj/Documents/MODAL-Net
+ls -lh paper_inputs/results/master/recal/shift_detector_{summary,gating,draws,notes}.csv paper_inputs/results/figures/fig_shift_detector.{png,pdf}
+git add paper_inputs/results/master/recal/shift_detector_*.csv paper_inputs/results/figures/fig_shift_detector.png paper_inputs/results/figures/fig_shift_detector.pdf
+git commit -m "R6 results: shift detector"
+git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
+```
+(If you prefer to keep figures encrypted as before: run `enc.py` on the PNG instead and push the JSON; the CSVs
+can go as they are.) A file missing on the server → its run did not finish: paste the end of the Step 2 output.
+
+**Step 4 — tell Claude:** "R6 pushed" + paste the Step 2 printed output. Claude then decides with the R6 reading
+below whether the detector goes into the paper as an exploratory result (and whether that changes the target).
+
+---
+
+## ✅ DONE (2026-11-13): the last day of experiments — run order, start 09:00, target end ≈ 15:00
+(kept for the record: every step below ran on 2026-11-13 and its outputs are on GitHub under `paper_inputs/`)
 
 Only this box tells you WHAT TO RUN NEXT. The full commands also stay in their sections below (G4, R2, R3, H1,
 H3, H4); this box repeats them in the right order. 4 H100 GPUs are enough. "WAIT" = do not start the next
@@ -531,7 +594,7 @@ Seed replicates are grouped automatically by configuration (any folder, any tag 
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase5_architecture/p5_retfound_joint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase5_architecture --tag p5_retfound_joint --inherit p3b_joint --set backbone=vit_large_patch16_224 pretrained=false pretrain_path=checkpoints/pretrain/RETFound_mae_natureCFP.pth backbone_global_pool=avg img_size=224 lr=3.0e-4 llrd=0.65 drop_path=0.2 mixstyle=false winner_eligible=false
   ```
   (CAM-based XAI is not available for this ViT baseline; it is a performance baseline only.)
-- [ ] **G4 (mandatory since 2026-11-12, was optional/skipped) — phase 6 domain generalisation, 4 runs, PARALLEL**
+- [✅] **G4 (mandatory since 2026-11-12, was optional/skipped) — phase 6 domain generalisation, 4 runs, PARALLEL**
   (≈ 4 × 4.7 GPU h; ≈ 5 h wall clock on 4 GPUs). Reviewers will ask whether domain-generalisation TRAINING removes
   the cut-point shift; these runs answer it. Since the headline model is the CE model `p3b_joint`, the three joint
   arms now inherit `p3b_joint` (before: `@phase4j_label_loss`, the ordinal head) so the comparison is like-for-like.
@@ -569,6 +632,7 @@ only READ finished checkpoints. The headline model of the paper becomes the CE m
 (the phase-4j winner `p4j_coralsrc_shared` stays in the paper as the pre-specified, non-replicating ordinal result).
 
 Order: R0 → R1 (GPU, can start right away, in parallel with the jobs that are still running) → R2 → R3 → R4.
+R6 (added 2026-11-13, optional, post-hoc) is independent and CPU only.
 R5 waits for F2c, G3 and G3b.
 
 - [✅] **R0 (mandatory) — bring the new code and test it.** On the Mac: the B1 `rsync` line. On the server:
@@ -577,7 +641,7 @@ R5 waits for F2c, G3 and G3b.
   ```
   No model download is needed for step R.
 
-- [🔃] **R1 (mandatory, GPU, 9 jobs, PARALLEL; ≈ 0.3–1 GPU h each)** — target-site adaptation baselines and
+- [✅] **R1 (mandatory, GPU, 9 jobs, PARALLEL; ≈ 0.3–1 GPU h each)** — target-site adaptation baselines and
   penultimate features, for the three CE runs. Each job only READS the finished checkpoints and writes into
   `results/<phase>/<tag>/target_adapt/` or `.../features/`; the run's own result files are never touched.
   ```bash
@@ -600,13 +664,13 @@ R5 waits for F2c, G3 and G3b.
     ```
     (6 `summary.csv` + 3 `head.npz` = done.)
 
-- [] **R2 (mandatory, CPU, ≈ 5 min) — few-label last-layer fine-tuning baseline** (needs the 3 `features` jobs of R1):
+- [✅] **R2 (mandatory, CPU, ≈ 5 min) — few-label last-layer fine-tuning baseline** (needs the 3 `features` jobs of R1):
   ```bash
   env/bin/python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce
   ```
   Output: `results/master/recal/fewshot_head_draws.csv`, `fewshot_head_lambda.csv` (same image draws as E4).
 
-- [ ] **R3 (mandatory, CPU, ≈ 5–15 min) — the recalibration suite** (after R1 and R2; it merges their outputs —
+- [✅] **R3 (mandatory, CPU, ≈ 5–15 min) — the recalibration suite** (after R1 and R2; it merges their outputs —
   if it is run earlier the missing rows are only noted, re-running overwrites). The first line adds the
   duplicate-audit rows of the phase-10 runs (needed for the APTOS near-duplicate sensitivity analysis):
   ```bash
@@ -666,6 +730,29 @@ R5 waits for F2c, G3 and G3b.
   - Framing decided by the outcome, not afterwards: Primary 1 holds → method paper (target IEEE JBHI);
     Primary 1 fails → multi-dataset benchmark/analysis paper (target Computers in Biology and Medicine).
 
+- [ ] **R6 (optional, post-hoc exploratory, CPU, ≈ 10–20 min) — label-free shift detector** (added 2026-11-13
+  AFTER the step-R results; independent of everything else; run order in the "NEXT (Monday 2026-11-16)" box at the top):
+  ```bash
+  env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py   # 19 passed
+  env/bin/python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
+  ```
+  Output: `results/master/recal/shift_detector_summary.csv`, `shift_detector_gating.csv`, `shift_detector_draws.csv`,
+  `shift_detector_notes.csv`; `results/figures/fig_shift_detector.{png,pdf}`. Same scenarios A0/A/B/C, source half
+  and seeds as R4. Score `D_mb` = TV distance between the MLLS and BBSE priors of the UNLABELLED DEV split;
+  comparators `D_ms`, `D_bs` (distance of each estimate from the source prior) and `D_conf` (confidence drop).
+  **Reading fixed before running it on the real predictions (2026-11-13):**
+  - Primary (the only confirmatory row, `primary = 1` in `shift_detector_summary.csv`): tag `ALL`, stratum `C`
+    (observed site splits + their bootstrap draws), AUROC of `D_mb` for `unsafe_mlls` (QWK of
+    `mlls_bcts_quantile` more than 0.02 below argmax on that draw's TEST). Call it a useful detector only if
+    AUROC ≥ 0.80 with the lower bound of its cluster-bootstrap interval > 0.70 (clusters = held-out datasets, so
+    only 3–4: the interval is wide by design), and only if `D_mb` beats `D_conf` (confidence-drop baseline) on
+    the same rows. Strata `site_images` and `all` are descriptive only (they mix APTOS-OOF and site predictions).
+  - Secondary: label `unsafe_vs_oracle_mlls` (harm caused by the prior ESTIMATE alone, vs the oracle cut-points).
+  - Practical: gating with `D_mb`, `tau_fit_on = all_scenarios`, `dataset = MEAN` rows of
+    `shift_detector_gating.csv`: claim "safe gating" only if `gated_minus_argmax_C_spread_lo` ≥ −0.005; claim
+    "useful gating" only if, in addition, `gated_minus_argmax_C` > 0. The `C_only` rows are a sensitivity check.
+  - Whatever the outcome, it is reported as post-hoc / exploratory, with all four scores and both corrections.
+
 - [ ] Back up (command in 0.2).
 
 ## H. Final model, report, XAI
@@ -675,7 +762,7 @@ replicate in phase 10, so after the external reviews the paper's HEADLINE model 
 (step R). H1 and H2 are run for both; the headline is used for the paper tables (H3). H1 and H2 can start now;
 H3 must be the very last computation.
 
-- [🔃] **H1 (mandatory) — inference products of FINAL** (no training). The TTA job is GPU; conformal calibration
+- [✅] **H1 (mandatory) — inference products of FINAL** (no training). The TTA job is GPU; conformal calibration
   works on saved predictions (CPU). Independent of each other:
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
@@ -688,7 +775,7 @@ H3 must be the very last computation.
   env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip_ce --base p3b_joint --set tta=flip
   ```
-- [🔃] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
+- [✅] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
   GPU, the four jobs are PARALLEL:
   ```bash
   FINAL=$(head -n 1 results/phase4j_label_loss/WINNER.txt)
@@ -702,7 +789,7 @@ H3 must be the very last computation.
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/xai/p3b_joint_loc.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode xai_localization --tag p3b_joint
   ```
   Output: `results/<phase>/<tag>/xai/` (grid + `xai_localization.csv`), copied grid in `results/figures/xai_grid.*`.
-- [ ] **H3 (mandatory, CPU) — tables and figures**, SEQUENTIAL, after every run you want in the paper is DONE
+- [✅] **H3 (mandatory, CPU) — tables and figures**, SEQUENTIAL, after every run you want in the paper is DONE
   (only real data is used; a table or figure without inputs is skipped and listed in
   `results/tables/TABLES_README.txt` / `results/figures/FIGURES_README.txt`, never filled in):
   ```bash

@@ -86,3 +86,7 @@ results/**
 # --- CRITICAL: Always track agent_context/ completely ---
 # Ensure no generic pattern (*.csv, *.md, *.py, *.pt, *.zip) ignores agent_context/ files
 !agent_context/**
+
+
+paper_inputs/results/figures/figures
+paper_inputs/results/figures/phase3b_joint/p3b_joint/xai
