@@ -1,0 +1,289 @@
+reference,tag,dataset,level,n,metric,diff_mean,diff_lo,diff_hi,n_resamples,bootstrap_unit
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,all,-1,qwk,0.0206,0.0039,0.0373,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,all,-1,qwk,0.0262,-0.0142,0.0726,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,all,-1,qwk,-0.0202,-0.0396,-0.0027,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,all,-1,qwk,0.0089,-0.0068,0.0273,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,all,-1,mild_recall,0.0807,-0.08,0.2392,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,all,-1,mild_recall,-0.1997,-0.6667,0.0,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,all,-1,mild_recall,-0.2413,-0.3046,-0.1856,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,all,-1,mild_recall,-0.1201,-0.2868,-0.0108,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,all,-1,bin_sens,0.0504,0.0118,0.0929,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,all,-1,bin_sens,0.0152,0.0,0.0508,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,all,-1,bin_sens,0.0377,0.0186,0.0587,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,all,-1,bin_sens,0.0345,0.0173,0.053,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,argmax,0,qwk,-0.0242,-0.0513,0.0038,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,argmax,0,qwk,0.0278,-0.0437,0.1001,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,argmax,0,qwk,-0.0167,-0.031,-0.0029,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,argmax,0,qwk,-0.0044,-0.031,0.0225,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,argmax,0,mild_recall,-0.0825,-0.2709,0.0646,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,argmax,0,mild_recall,-0.4013,-1.0,0.0,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,argmax,0,mild_recall,0.0009,-0.0577,0.0569,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,argmax,0,mild_recall,-0.1609,-0.3457,-0.0021,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,argmax,0,bin_sens,-0.0005,-0.0185,0.0174,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,argmax,0,bin_sens,0.0473,0.0,0.1035,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,argmax,0,bin_sens,0.0053,-0.0171,0.0275,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,argmax,0,bin_sens,0.0173,-0.0013,0.0393,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,default_cuts,0,qwk,0.0337,0.0125,0.0531,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,default_cuts,0,qwk,0.0424,-0.0205,0.1145,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,default_cuts,0,qwk,0.003,-0.0111,0.0168,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,default_cuts,0,qwk,0.0264,0.0038,0.0517,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,default_cuts,0,mild_recall,-0.0017,-0.091,0.0714,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,default_cuts,0,mild_recall,0.1978,0.0,0.6667,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,default_cuts,0,mild_recall,-0.0197,-0.0686,0.0267,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,default_cuts,0,mild_recall,0.0588,-0.0328,0.208,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,default_cuts,0,bin_sens,0.0,-0.0177,0.0188,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,default_cuts,0,bin_sens,0.015,0.0,0.05,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,default_cuts,0,bin_sens,-0.0104,-0.0346,0.013,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,default_cuts,0,bin_sens,0.0015,-0.0107,0.0152,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,10,qwk,0.0131,-0.0526,0.1048,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,10,qwk,0.036,-0.04,0.1089,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,10,qwk,-0.0067,-0.0858,0.1518,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,10,qwk,0.0142,-0.0279,0.0695,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,10,mild_recall,0.0329,-0.4,0.4236,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,10,mild_recall,-0.03,-0.705,0.2,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,10,mild_recall,-0.0337,-0.5587,0.4259,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,10,mild_recall,-0.0103,-0.2992,0.2746,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,10,bin_sens,-0.0021,-0.0794,0.0488,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,10,bin_sens,0.025,-0.0156,0.1273,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,10,bin_sens,-0.0057,-0.1192,0.1035,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,10,bin_sens,0.0057,-0.0544,0.0508,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,100,qwk,0.0178,-0.0069,0.0388,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,100,qwk,0.0089,-0.0154,0.0323,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,100,qwk,-0.02,-0.0437,0.004,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,100,qwk,0.0022,-0.0106,0.0217,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,100,mild_recall,0.1257,-0.0436,0.5429,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,100,mild_recall,-0.13,-0.505,0.2,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,100,mild_recall,-0.1087,-0.4106,0.1488,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,100,mild_recall,-0.0377,-0.1681,0.1478,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,100,bin_sens,-0.0104,-0.1479,0.1479,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,100,bin_sens,0.0359,-0.0082,0.0707,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,100,bin_sens,0.0238,-0.098,0.0736,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,100,bin_sens,0.0164,-0.0445,0.0703,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,25,qwk,0.0081,-0.0393,0.0637,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,25,qwk,0.0286,-0.0373,0.1282,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,25,qwk,-0.0096,-0.0676,0.0167,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,25,qwk,0.009,-0.0227,0.047,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,25,mild_recall,-0.0929,-0.5786,0.1443,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,25,mild_recall,-0.11,-0.6,0.61,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,25,mild_recall,-0.0243,-0.2848,0.1683,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,25,mild_recall,-0.0757,-0.2431,0.1746,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,25,bin_sens,0.028,-0.0561,0.1907,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,25,bin_sens,0.043,-0.0887,0.1414,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,25,bin_sens,0.0001,-0.0671,0.0906,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,25,bin_sens,0.0237,-0.0338,0.1102,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,50,qwk,0.0023,-0.0308,0.0208,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,50,qwk,0.0145,-0.0409,0.067,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,50,qwk,-0.0173,-0.0414,0.0094,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,50,qwk,-0.0002,-0.0235,0.0268,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,50,mild_recall,0.0343,-0.3307,0.41,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,50,mild_recall,-0.13,-0.705,0.4,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,50,mild_recall,-0.0267,-0.2666,0.2572,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,50,mild_recall,-0.0408,-0.2646,0.1225,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot,50,bin_sens,-0.0262,-0.1284,0.0247,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot,50,bin_sens,0.0336,-0.0715,0.1176,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot,50,bin_sens,0.0149,-0.045,0.0933,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot,50,bin_sens,0.0074,-0.0439,0.0623,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,10,qwk,0.014,-0.0068,0.0336,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,10,qwk,0.0418,-0.0267,0.0955,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,10,qwk,0.0013,-0.0331,0.0501,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,10,qwk,0.019,-0.0131,0.0447,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,10,mild_recall,0.0586,-0.1307,0.3321,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,10,mild_recall,-0.01,-0.305,0.305,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,10,mild_recall,-0.0307,-0.3553,0.2389,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,10,mild_recall,0.006,-0.1468,0.1153,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,10,bin_sens,-0.0027,-0.0794,0.0488,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,10,bin_sens,0.0273,-0.0008,0.0879,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,10,bin_sens,-0.001,-0.0304,0.0565,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,10,bin_sens,0.0079,-0.0203,0.0333,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,100,qwk,0.0178,-0.0069,0.0388,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,100,qwk,0.0188,-0.0072,0.0416,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,100,qwk,-0.0165,-0.0371,0.003,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,100,qwk,0.0067,-0.0127,0.0211,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,100,mild_recall,0.1257,-0.0436,0.5429,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,100,mild_recall,-0.43,-0.8,0.105,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,100,mild_recall,-0.0125,-0.1934,0.1735,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,100,mild_recall,-0.1056,-0.2674,0.0812,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,100,bin_sens,-0.0104,-0.1479,0.1479,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,100,bin_sens,0.0367,-0.0082,0.0707,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,100,bin_sens,0.0129,-0.098,0.0615,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,100,bin_sens,0.0131,-0.0468,0.0689,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,25,qwk,0.0176,-0.0137,0.0362,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,25,qwk,0.0495,0.0014,0.0982,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,25,qwk,-0.0123,-0.0305,0.0103,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,25,qwk,0.0182,-0.0082,0.0381,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,25,mild_recall,-0.0657,-0.3864,0.2571,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,25,mild_recall,-0.12,-0.705,0.4,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,25,mild_recall,-0.008,-0.3778,0.2741,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,25,mild_recall,-0.0646,-0.3308,0.1783,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,25,bin_sens,-0.0162,-0.1537,0.043,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,25,bin_sens,0.0422,-0.0164,0.1176,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,25,bin_sens,-0.0034,-0.0589,0.0437,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,25,bin_sens,0.0075,-0.0355,0.0324,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,50,qwk,0.0081,-0.0221,0.0396,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,50,qwk,0.0187,-0.0296,0.073,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,50,qwk,-0.0142,-0.0387,0.0223,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,50,qwk,0.0042,-0.0152,0.0231,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,50,mild_recall,0.04,-0.2736,0.3486,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,50,mild_recall,-0.13,-0.705,0.505,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,50,mild_recall,0.0387,-0.1346,0.3376,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,50,mild_recall,-0.0171,-0.323,0.245,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,fewshot_shrink,50,bin_sens,-0.0326,-0.1566,0.0276,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,idrid,fewshot_shrink,50,bin_sens,0.0242,-0.0648,0.0707,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,messidor,fewshot_shrink,50,bin_sens,-0.0005,-0.0518,0.0853,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,fewshot_shrink,50,bin_sens,-0.003,-0.0487,0.0334,20,draws
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,prevalence_oracle,0,qwk,0.0107,-0.0039,0.0264,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,prevalence_oracle,0,qwk,0.0053,-0.0451,0.055,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,prevalence_oracle,0,qwk,-0.0096,-0.0227,0.0033,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,prevalence_oracle,0,qwk,0.0021,-0.0146,0.0218,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,prevalence_oracle,0,mild_recall,0.0533,-0.0589,0.1702,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,prevalence_oracle,0,mild_recall,0.0,0.0,0.0,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,prevalence_oracle,0,mild_recall,-0.0199,-0.0705,0.027,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,prevalence_oracle,0,mild_recall,0.0112,-0.0294,0.0511,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s1,p10d_coralsrc_s1,deepdrid,prevalence_oracle,0,bin_sens,-0.0119,-0.0432,0.0228,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s1,p10d_coralsrc_s1,idrid,prevalence_oracle,0,bin_sens,0.0155,-0.0357,0.0715,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,messidor,prevalence_oracle,0,bin_sens,-0.0,-0.0211,0.0199,1000,image
+p10d_ce_s1,p10d_coralsrc_s1,MEAN,prevalence_oracle,0,bin_sens,0.0012,-0.0203,0.0239,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,all,-1,qwk,0.0037,-0.0168,0.0208,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,all,-1,qwk,0.0193,-0.0172,0.0608,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,all,-1,qwk,0.009,-0.0024,0.0202,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,all,-1,qwk,0.0107,-0.0038,0.0254,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,all,-1,mild_recall,0.0051,-0.1396,0.1482,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,all,-1,mild_recall,0.1981,0.0,0.6679,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,all,-1,mild_recall,0.0467,0.0044,0.0905,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,all,-1,mild_recall,0.0833,-0.0262,0.2515,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,all,-1,bin_sens,0.0073,-0.038,0.0486,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,all,-1,bin_sens,0.0,0.0,0.0,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,all,-1,bin_sens,0.0183,-0.0052,0.0414,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,all,-1,bin_sens,0.0085,-0.008,0.0243,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,argmax,0,qwk,-0.015,-0.0426,0.007,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,argmax,0,qwk,0.0309,-0.013,0.076,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,argmax,0,qwk,-0.0026,-0.0228,0.018,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,argmax,0,qwk,0.0045,-0.015,0.0233,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,argmax,0,mild_recall,0.0007,-0.1429,0.1251,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,argmax,0,mild_recall,-0.4013,-1.0,0.0,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,argmax,0,mild_recall,-0.0997,-0.1535,-0.0424,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,argmax,0,mild_recall,-0.1668,-0.3607,-0.012,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,argmax,0,bin_sens,0.0064,0.0,0.02,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,argmax,0,bin_sens,0.0473,0.0,0.1035,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,argmax,0,bin_sens,-0.0627,-0.0895,-0.0373,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,argmax,0,bin_sens,-0.003,-0.021,0.0184,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,default_cuts,0,qwk,0.0609,0.0341,0.0918,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,default_cuts,0,qwk,0.0645,-0.0044,0.1346,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,default_cuts,0,qwk,0.0287,0.0119,0.0461,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,default_cuts,0,qwk,0.0514,0.0255,0.0776,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,default_cuts,0,mild_recall,0.001,-0.2,0.1818,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,default_cuts,0,mild_recall,0.1978,0.0,0.6667,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,default_cuts,0,mild_recall,-0.1787,-0.2513,-0.108,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,default_cuts,0,mild_recall,0.0067,-0.1151,0.1663,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,default_cuts,0,bin_sens,-0.0182,-0.0479,0.0061,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,default_cuts,0,bin_sens,-0.0152,-0.0517,0.0,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,default_cuts,0,bin_sens,-0.1391,-0.177,-0.1018,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,default_cuts,0,bin_sens,-0.0575,-0.0783,-0.0397,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,10,qwk,0.0238,-0.0333,0.1385,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,10,qwk,0.0352,-0.052,0.1137,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,10,qwk,-0.0068,-0.1103,0.1176,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,10,qwk,0.0174,-0.0161,0.0494,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,10,mild_recall,0.03,-0.5157,0.3621,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,10,mild_recall,0.06,-0.705,0.61,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,10,mild_recall,-0.0825,-0.6369,0.3472,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,10,mild_recall,0.0025,-0.2243,0.2808,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,10,bin_sens,-0.0201,-0.0686,0.0003,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,10,bin_sens,-0.0016,-0.0723,0.1191,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,10,bin_sens,-0.0122,-0.2342,0.1685,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,10,bin_sens,-0.0113,-0.0923,0.0604,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,100,qwk,-0.0043,-0.0245,0.0146,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,100,qwk,0.0027,-0.0491,0.0333,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,100,qwk,0.0061,-0.0066,0.0303,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,100,qwk,0.0015,-0.0161,0.0244,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,100,mild_recall,-0.0171,-0.2314,0.1293,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,100,mild_recall,0.15,-0.4,0.6,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,100,mild_recall,0.0085,-0.2318,0.3465,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,100,mild_recall,0.0471,-0.1258,0.2791,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,100,bin_sens,-0.0433,-0.2117,0.0552,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,100,bin_sens,0.0219,-0.0238,0.0625,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,100,bin_sens,0.0026,-0.1747,0.1078,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,100,bin_sens,-0.0063,-0.0973,0.0484,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,25,qwk,0.009,-0.0292,0.0774,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,25,qwk,0.0124,-0.0435,0.0552,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,25,qwk,-0.0121,-0.1072,0.0269,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,25,qwk,0.0031,-0.0251,0.0406,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,25,mild_recall,0.2229,-0.0436,0.7607,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,25,mild_recall,-0.06,-0.505,0.305,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,25,mild_recall,-0.0434,-0.5716,0.4316,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,25,mild_recall,0.0398,-0.1712,0.2816,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,25,bin_sens,-0.0107,-0.0892,0.102,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,25,bin_sens,0.0227,-0.0238,0.0945,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,25,bin_sens,0.0219,-0.1728,0.1999,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,25,bin_sens,0.0113,-0.0562,0.0649,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,50,qwk,0.0024,-0.0258,0.0274,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,50,qwk,0.0105,-0.0199,0.0688,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,50,qwk,0.0026,-0.0361,0.0436,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,50,qwk,0.0052,-0.0138,0.0307,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,50,mild_recall,0.07,-0.3471,0.4014,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,50,mild_recall,-0.08,-0.505,0.505,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,50,mild_recall,-0.0679,-0.538,0.2346,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,50,mild_recall,-0.026,-0.29,0.2334,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot,50,bin_sens,-0.0369,-0.1902,0.0642,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot,50,bin_sens,0.0242,-0.0797,0.1094,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot,50,bin_sens,0.0535,-0.0368,0.1781,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot,50,bin_sens,0.0136,-0.0607,0.0537,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,10,qwk,0.0403,0.0083,0.0714,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,10,qwk,0.0381,-0.0185,0.1114,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,10,qwk,0.0172,-0.0272,0.064,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,10,qwk,0.0318,0.0058,0.0609,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,10,mild_recall,-0.01,-0.215,0.1021,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,10,mild_recall,0.34,0.0,0.8,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,10,mild_recall,0.0165,-0.242,0.2233,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,10,mild_recall,0.1155,-0.0712,0.283,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,10,bin_sens,-0.0152,-0.0308,0.0093,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,10,bin_sens,-0.0352,-0.1332,0.0238,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,10,bin_sens,-0.097,-0.2506,0.0291,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,10,bin_sens,-0.0491,-0.1127,-0.0016,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,100,qwk,-0.0047,-0.0263,0.0199,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,100,qwk,0.0254,-0.0059,0.0503,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,100,qwk,0.0068,-0.0122,0.0279,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,100,qwk,0.0092,-0.0061,0.0216,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,100,mild_recall,0.0814,-0.0736,0.3143,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,100,mild_recall,-0.06,-0.505,0.4,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,100,mild_recall,0.0144,-0.2177,0.3217,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,100,mild_recall,0.0119,-0.1569,0.2225,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,100,bin_sens,-0.0561,-0.2378,0.0308,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,100,bin_sens,0.0234,-0.0238,0.0625,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,100,bin_sens,-0.0159,-0.1836,0.0912,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,100,bin_sens,-0.0162,-0.1024,0.0398,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,25,qwk,-0.0036,-0.0293,0.0399,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,25,qwk,0.017,-0.0303,0.0549,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,25,qwk,0.0063,-0.0506,0.0469,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,25,qwk,0.0065,-0.0235,0.0353,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,25,mild_recall,0.0429,-0.23,0.3457,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,25,mild_recall,0.42,0.0,0.8,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,25,mild_recall,0.0627,-0.3825,0.4473,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,25,mild_recall,0.1752,-0.0815,0.3735,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,25,bin_sens,0.0369,-0.043,0.1777,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,25,bin_sens,-0.0328,-0.1184,0.0312,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,25,bin_sens,-0.0421,-0.1728,0.1202,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,25,bin_sens,-0.0127,-0.0677,0.0479,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,50,qwk,0.0047,-0.0087,0.0243,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,50,qwk,0.0231,-0.0083,0.0683,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,50,qwk,0.0137,-0.0151,0.0573,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,50,qwk,0.0138,-0.0062,0.0394,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,50,mild_recall,0.0671,-0.2286,0.3907,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,50,mild_recall,-0.04,-0.61,0.505,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,50,mild_recall,0.0007,-0.2134,0.2621,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,50,mild_recall,0.0093,-0.1661,0.2584,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,fewshot_shrink,50,bin_sens,-0.0171,-0.1502,0.0991,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,idrid,fewshot_shrink,50,bin_sens,0.0164,-0.0805,0.0945,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,messidor,fewshot_shrink,50,bin_sens,-0.0084,-0.1364,0.1006,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,fewshot_shrink,50,bin_sens,-0.003,-0.0715,0.0595,20,draws
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,prevalence_oracle,0,qwk,0.001,-0.0164,0.0187,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,prevalence_oracle,0,qwk,0.0091,-0.0241,0.0432,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,prevalence_oracle,0,qwk,0.0066,-0.0052,0.0196,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,prevalence_oracle,0,qwk,0.0056,-0.0081,0.0188,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,prevalence_oracle,0,mild_recall,0.1174,0.0,0.25,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,prevalence_oracle,0,mild_recall,0.0,0.0,0.0,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,prevalence_oracle,0,mild_recall,0.0238,-0.0242,0.0758,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,prevalence_oracle,0,mild_recall,0.0471,0.003,0.0936,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
+p10d_ce_s2,p10d_coralsrc_s2,deepdrid,prevalence_oracle,0,bin_sens,-0.0176,-0.0532,0.0128,1000,cluster (group column; 100 groups / 399 images)
+p10d_ce_s2,p10d_coralsrc_s2,idrid,prevalence_oracle,0,bin_sens,0.0464,0.0,0.1034,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,messidor,prevalence_oracle,0,bin_sens,0.0164,-0.0057,0.0401,1000,image
+p10d_ce_s2,p10d_coralsrc_s2,MEAN,prevalence_oracle,0,bin_sens,0.0151,-0.0051,0.0385,1000,deepdrid: cluster (group column; 100 groups / 399 images); idrid: image; messidor: image
