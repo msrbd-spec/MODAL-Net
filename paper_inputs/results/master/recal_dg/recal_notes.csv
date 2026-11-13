@@ -1,0 +1,6 @@
+tag,dataset,method,note
+"p6_amp,p6_ms,p6_amp_ms,p6_amp_nojoint,p3b_joint",MEAN_COMMON,-,"MEAN_COMMON = unweighted mean over the held-out datasets analysed for EVERY tag (intersection): messidor,ddr,deepdrid,idrid; per-tag held-out sets: p6_amp: messidor,ddr,deepdrid,idrid; p6_ms: messidor,ddr,deepdrid,idrid; p6_amp_ms: messidor,ddr,deepdrid,idrid; p6_amp_nojoint: messidor,ddr,deepdrid,idrid; p3b_joint: messidor,ddr,deepdrid,idrid"
+p6_amp,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p6_amp
+p6_ms,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p6_ms
+p6_amp_ms,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p6_amp_ms
+p6_amp_nojoint,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p6_amp_nojoint
