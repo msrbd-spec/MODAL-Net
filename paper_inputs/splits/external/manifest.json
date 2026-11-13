@@ -1,0 +1,119 @@
+{
+  "dedup_exclude_max": 2,
+  "audit_files": [
+    "duplicates.csv",
+    "duplicates_external.csv"
+  ],
+  "splits": {
+    "messidor_dev": {
+      "n_raw": 349,
+      "n": 349,
+      "class_counts": [
+        202,
+        58,
+        73,
+        9,
+        7
+      ]
+    },
+    "messidor_test": {
+      "n_raw": 1395,
+      "n": 1395,
+      "class_counts": [
+        815,
+        212,
+        274,
+        66,
+        28
+      ]
+    },
+    "ddr_train": {
+      "n_raw": 6260,
+      "n": 6260,
+      "class_counts": [
+        3133,
+        315,
+        2238,
+        118,
+        456
+      ]
+    },
+    "ddr_dev": {
+      "n_raw": 2503,
+      "n": 2445,
+      "class_counts": [
+        1212,
+        122,
+        883,
+        47,
+        181
+      ]
+    },
+    "ddr_test": {
+      "n_raw": 3759,
+      "n": 3638,
+      "class_counts": [
+        1786,
+        186,
+        1322,
+        70,
+        274
+      ]
+    },
+    "deepdrid_train": {
+      "n_raw": 1200,
+      "n": 1200,
+      "class_counts": [
+        540,
+        140,
+        234,
+        214,
+        72
+      ]
+    },
+    "deepdrid_dev": {
+      "n_raw": 400,
+      "n": 399,
+      "class_counts": [
+        173,
+        46,
+        92,
+        68,
+        20
+      ]
+    },
+    "deepdrid_test": {
+      "n_raw": 400,
+      "n": 399,
+      "class_counts": [
+        200,
+        35,
+        72,
+        72,
+        20
+      ]
+    },
+    "idrid_dev": {
+      "n_raw": 413,
+      "n": 413,
+      "class_counts": [
+        134,
+        20,
+        136,
+        74,
+        49
+      ]
+    },
+    "idrid_test": {
+      "n_raw": 103,
+      "n": 103,
+      "class_counts": [
+        34,
+        5,
+        32,
+        19,
+        13
+      ]
+    }
+  }
+}
