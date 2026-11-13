@@ -1,0 +1,6 @@
+tag,dataset,method,note
+"p5_convnextv2,p5_effnetv2,p5_retfound,p5_retfound_joint",MEAN_COMMON,-,"MEAN_COMMON = unweighted mean over the held-out datasets analysed for EVERY tag (intersection): messidor,ddr,deepdrid,idrid; per-tag held-out sets: p5_convnextv2: messidor,ddr,deepdrid,idrid; p5_effnetv2: messidor,ddr,deepdrid,idrid; p5_retfound: messidor,ddr,deepdrid,idrid; p5_retfound_joint: messidor,ddr,deepdrid,idrid"
+p5_convnextv2,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p5_convnextv2
+p5_effnetv2,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p5_effnetv2
+p5_retfound,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p5_retfound
+p5_retfound_joint,aptos_test,aptos_dup_sensitivity,no leakage_check rows for this tag: only APTOS-train duplicates excluded; run tools/leakage_check.py --tags p5_retfound_joint
