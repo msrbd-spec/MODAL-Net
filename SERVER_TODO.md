@@ -7,7 +7,7 @@ This file is enough to run the whole project: every command is written here in f
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
 
-## ▶ NEXT (Monday 2026-11-16): R6 shift detector — CPU only, ≈ 30 min in total, no GPU, no zip
+## ▶ NEXT (Monday 2026-11-16): R6 shift detector + environment report — ≈ 35 min in total, no zip
 
 Only this box tells you WHAT TO RUN NEXT. One new analysis, post-hoc / exploratory (not in the pre-declared
 rules): does the disagreement between the two label-free prior estimates (MLLS and BBSE) tell, WITHOUT any target
@@ -40,6 +40,17 @@ env/bin/python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_cora
 It prints the AUROC table, the PRIMARY line and the gating table at the end. Copy the whole printed output (from
 "AUROC, ALL tags pooled" to the "written:" line) — it goes to Claude in Step 4. Tick R6 below.
 
+**Step 2b — on the server (≈ 2 min): record the software and GPU versions for the paper.**
+The paper's Implementation Details need the exact server versions (Python, PyTorch, CUDA, cuDNN, timm,
+albumentations, GPU). Run the report once on the login node and once on an H100 node (the login node has no GPU,
+so CUDA/GPU lines only appear in the second one):
+```bash
+env/bin/python tools/env_report.py | tee outputs/env_report_login.txt
+phd run -p shr_gpu -ng 1 -GR H100 -l outputs/env_report_h100.txt -- env HF_HUB_OFFLINE=1 env/bin/python tools/env_report.py
+cat outputs/env_report_h100.txt
+```
+Copy both printed reports — they go to Claude in Step 4 (no file transfer needed).
+
 **Step 3 — bring the 6 small files to GitHub (WinSCP, ≈ 5 min; together < 3 MB, so no zip).**
 In WinSCP, on the server side, open `/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR` and drag these files
 to the PC, then move them to the Mac into the SAME folder names under `paper_inputs/`:
@@ -64,7 +75,7 @@ git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Ne
 (If you prefer to keep figures encrypted as before: run `enc.py` on the PNG instead and push the JSON; the CSVs
 can go as they are.) A file missing on the server → its run did not finish: paste the end of the Step 2 output.
 
-**Step 4 — tell Claude:** "R6 pushed" + paste the Step 2 printed output. Claude then decides with the R6 reading
+**Step 4 — tell Claude:** "R6 pushed" + paste the Step 2 printed output and both Step 2b environment reports. Claude then decides with the R6 reading
 below whether the detector goes into the paper as an exploratory result (and whether that changes the target).
 
 ---

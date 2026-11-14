@@ -90,3 +90,5 @@ results/**
 
 paper_inputs/results/figures/figures
 paper_inputs/results/figures/phase3b_joint/p3b_joint/xai
+# paper drafts (kept local, not pushed)
+paper/
