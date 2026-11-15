@@ -7,7 +7,7 @@ This file is enough to run the whole project: every command is written here in f
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
 
-## ▶ NEXT (Monday 2026-11-16): R6 shift detector + environment report — ≈ 35 min in total, no zip
+## ▶ NEXT (Monday 2026-11-16): R6 shift detector + environment report + one paper figure — ≈ 40 min in total, no zip
 
 Only this box tells you WHAT TO RUN NEXT. One new analysis, post-hoc / exploratory (not in the pre-declared
 rules): does the disagreement between the two label-free prior estimates (MLLS and BBSE) tell, WITHOUT any target
@@ -17,11 +17,13 @@ of `tools/shift_detector.py`. Nothing else has to be re-run; every other result 
 **Step 0 — on the Mac (≈ 2 min): push, then copy the code to the server.**
 Claude already put the new code in the Mac repo and committed it (2026-11-13: `tools/shift_detector.py`,
 `tests/test_shift_detector.py`, this file, `commands.md`, `agent_context/MODAL_PART2.md`; 7 redundant `.gitkeep`
-files removed — `checkpoints/pretrain/`, `logs/`, `softlabels/` keep theirs). If `git log -1` does not show the
-"R6" commit, tell Claude. Push it (password = your GitHub token):
+files removed — `checkpoints/pretrain/`, `logs/`, `softlabels/` keep theirs). 2026-11-15: Claude added
+`tools/paper_fig_operating_points.py` + `tests/test_paper_fig_operating_points.py` (paper Fig. 7) and committed them
+("paper figure tool"). If `git log -2` does not show the "R6" and "paper figure tool" commits, tell Claude.
+Push (password = your GitHub token):
 ```bash
 cd /Users/meheraj/Documents/MODAL-Net
-git log --oneline -1
+git log --oneline -2
 git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
 ```
 Then copy the code to the server with the B1 `rsync` line (section B; code only, never `results/` or `splits/`).
@@ -29,9 +31,9 @@ Then copy the code to the server with the B1 `rsync` line (section B; code only,
 **Step 1 — on the server (≈ 2 min): test the new code.**
 ```bash
 cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
-env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py
+env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py tests/test_paper_fig_operating_points.py
 ```
-Expected: `19 passed`. Anything else: stop and paste the output to Claude.
+Expected: `21 passed`. Anything else: stop and paste the output to Claude.
 
 **Step 2 — on the server (CPU, ≈ 10–20 min): run R6.**
 ```bash
@@ -51,7 +53,14 @@ cat outputs/env_report_h100.txt
 ```
 Copy both printed reports — they go to Claude in Step 4 (no file transfer needed).
 
-**Step 3 — bring the 6 small files to GitHub (WinSCP, ≈ 5 min; together < 3 MB, so no zip).**
+**Step 2c — on the server (CPU, < 1 min): paper Fig. 7 (referable ROC + operating points of the main model).**
+The prediction files are only on the server, so this figure is drawn there.
+```bash
+env/bin/python tools/paper_fig_operating_points.py --exp_dir results/phase3b_joint/p3b_joint --tag p3b_joint
+```
+It prints `written results/figures/paper_fig07_operating_points.png/.pdf`.
+
+**Step 3 — bring the 8 small files to GitHub (WinSCP, ≈ 5 min; together < 4 MB, so no zip).**
 In WinSCP, on the server side, open `/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR` and drag these files
 to the PC, then move them to the Mac into the SAME folder names under `paper_inputs/`:
 
@@ -63,13 +72,15 @@ to the PC, then move them to the Mac into the SAME folder names under `paper_inp
 | `results/master/recal/shift_detector_notes.csv` | `paper_inputs/results/master/recal/` |
 | `results/figures/fig_shift_detector.png` | `paper_inputs/results/figures/` |
 | `results/figures/fig_shift_detector.pdf` | `paper_inputs/results/figures/` |
+| `results/figures/paper_fig07_operating_points.png` | `paper_inputs/results/figures/` |
+| `results/figures/paper_fig07_operating_points.pdf` | `paper_inputs/results/figures/` |
 
-Check on the Mac that all 6 are there (each line must print a size, none "No such file"), then push:
+Check on the Mac that all 8 are there (each line must print a size, none "No such file"), then push:
 ```bash
 cd /Users/meheraj/Documents/MODAL-Net
-ls -lh paper_inputs/results/master/recal/shift_detector_{summary,gating,draws,notes}.csv paper_inputs/results/figures/fig_shift_detector.{png,pdf}
-git add paper_inputs/results/master/recal/shift_detector_*.csv paper_inputs/results/figures/fig_shift_detector.png paper_inputs/results/figures/fig_shift_detector.pdf
-git commit -m "R6 results: shift detector"
+ls -lh paper_inputs/results/master/recal/shift_detector_{summary,gating,draws,notes}.csv paper_inputs/results/figures/fig_shift_detector.{png,pdf} paper_inputs/results/figures/paper_fig07_operating_points.{png,pdf}
+git add paper_inputs/results/master/recal/shift_detector_*.csv paper_inputs/results/figures/fig_shift_detector.png paper_inputs/results/figures/fig_shift_detector.pdf paper_inputs/results/figures/paper_fig07_operating_points.png paper_inputs/results/figures/paper_fig07_operating_points.pdf
+git commit -m "R6 results: shift detector; paper Fig. 7"
 git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
 ```
 (If you prefer to keep figures encrypted as before: run `enc.py` on the PNG instead and push the JSON; the CSVs
