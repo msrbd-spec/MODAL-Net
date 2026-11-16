@@ -19,6 +19,11 @@ import matplotlib.pyplot as plt
 
 from src.utils.io_utils import fmt2
 
+# Float tolerance for comparing accumulated interval mass with qhat. Both are sums of the same
+# probabilities, but in a different order, so they can differ in the last bits; without the tolerance
+# a set can grow by one extra grade (and to all five grades when qhat is 1 up to rounding).
+MASS_TOL = 1e-9
+
 
 def interval_scores(P: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Compute minimal contiguous-interval probability mass around argmax containing true label.
@@ -58,7 +63,7 @@ def compute_qhat(scores_cal: np.ndarray, alpha: float = 0.10) -> float:
         return 1.0
     level = min(1.0, float(np.ceil((n + 1) * (1.0 - alpha)) / n))
     qhat = float(np.quantile(scores_cal, level, method='higher'))
-    return qhat
+    return min(qhat, 1.0)
 
 
 def interval_set(p: np.ndarray, qhat: float) -> tuple:
@@ -74,7 +79,7 @@ def interval_set(p: np.ndarray, qhat: float) -> tuple:
     K = len(p)
     lo = hi = int(np.argmax(p))
     m = float(p[lo])
-    while m < qhat and (lo > 0 or hi < K - 1):
+    while m < qhat - MASS_TOL and (lo > 0 or hi < K - 1):
         l = float(p[lo - 1]) if lo > 0 else -1.0
         r = float(p[hi + 1]) if hi < K - 1 else -1.0
         if l >= r:
@@ -199,7 +204,7 @@ def evaluate_conformal_predictions(P: np.ndarray, y: np.ndarray, qhat: float, al
 
     return {
         'target_coverage': fmt2((1.0 - alpha) * 100.0),
-        'qhat': fmt2(qhat),
+        'qhat': f'{qhat:.4f}',
         'empirical_coverage': fmt2(coverage * 100.0),
         'mean_width': fmt2(mean_width),
         'singleton_share': fmt2(singleton_share),

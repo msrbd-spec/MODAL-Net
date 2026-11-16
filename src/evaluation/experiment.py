@@ -22,7 +22,7 @@ from sklearn.metrics import roc_curve, precision_recall_curve, confusion_matrix
 from src.data.external import DISPLAY_NAMES, check_eval_inputs, eval_set_names, eval_frame
 from src.models.gradenet import GradeNet
 from src.training.trainer import train_fold
-from src.evaluation.metrics import compute_oof_thresholds, ece, fit_temperature
+from src.evaluation.metrics import apply_temperature, compute_oof_thresholds, ece, fit_temperature
 from src.evaluation.evaluate import (collect_sets, write_artifacts, load_saved_set, restrict_to_frame,
                                      run_evaluate_ensemble)
 from src.evaluation.conformal import (interval_scores, compute_qhat, predict_intervals,
@@ -314,6 +314,27 @@ def run_ensemble_experiment(cfg: dict):
                                  keep=None)
 
 
+def conformal_temperature(cfg: dict, base: str, oof_p: np.ndarray, oof_y: np.ndarray, logger) -> float:
+    """Temperature that maps the base model's raw OOF probabilities to the scale of its saved y_prob.
+
+    Order: 1.0 when temperature_scaling is off; the 'temperature' of checkpoints/<base or owner>/thresholds.json
+    (the value evaluate applied); otherwise a refit on the OOF predictions (the same procedure evaluate uses).
+    """
+    if not bool(cfg.get('temperature_scaling', True)):
+        return 1.0
+    for cand in (os.path.join('checkpoints', base, 'thresholds.json'),
+                 os.path.join('checkpoints', ckpt_owner(base), 'thresholds.json')):
+        if os.path.isfile(cand):
+            with open(cand) as f_t:
+                T = json.load(f_t).get('temperature')
+            if T is not None and float(T) > 0:
+                logger.info(f'conformal: temperature {float(T):.4f} from {cand}')
+                return float(T)
+    T = float(fit_temperature(np.log(np.clip(oof_p, 1e-15, 1.0)), oof_y))
+    logger.info(f'conformal: no thresholds.json temperature found, refitted on OOF: T={T:.4f}')
+    return T
+
+
 def run_calibrate_conformal(cfg: dict):
     """Split-conformal ordinal intervals calibrated on the pooled OOF, evaluated on every set of the base."""
     tag = cfg['tag']
@@ -346,9 +367,15 @@ def run_calibrate_conformal(cfg: dict):
         oof_p = np.asarray(f['P'] if 'P' in f.files else f['y_prob'])
     shutil.copy2(oof_path, os.path.join(exp_dir, 'oof.npz'))
 
+    # The evaluation sets store temperature-scaled probabilities (y_prob), whereas oof.npz holds the raw
+    # ensemble probabilities. The conformal threshold must be calibrated on the same scale it is applied to,
+    # so the OOF probabilities are scaled with the temperature of the base model first.
+    T = conformal_temperature(cfg, base, oof_p, oof_y, logger)
+    oof_cal = apply_temperature(oof_p, T) if T != 1.0 else oof_p
     alpha = float(cfg.get('conformal_alpha', 0.10))
-    qhat = compute_qhat(interval_scores(oof_p, oof_y), alpha=alpha)
-    logger.info(f"Computed conformal cutoff qhat={qhat:.4f} for alpha={alpha:.2f} (n_cal={len(oof_y)})")
+    qhat = compute_qhat(interval_scores(oof_cal, oof_y), alpha=alpha)
+    logger.info(f"Computed conformal cutoff qhat={qhat:.4f} for alpha={alpha:.2f} (n_cal={len(oof_y)}, "
+                f"OOF temperature-scaled with T={T:.4f})")
 
     rows = []
     fig_dir = os.path.join(exp_dir, 'figures')
@@ -359,9 +386,15 @@ def run_calibrate_conformal(cfg: dict):
         with np.load(p, allow_pickle=True) as f:
             y = np.asarray(f['y_true'], dtype=int)
             P = np.asarray(f['y_prob'])
+            P_raw = np.asarray(f['y_prob_raw']) if 'y_prob_raw' in f.files else None
+        if P_raw is not None and P_raw.shape == P.shape:
+            gap = float(np.max(np.abs(apply_temperature(P_raw, T) - P))) if T != 1.0 else float(np.max(np.abs(P_raw - P)))
+            if gap > 1e-4:
+                logger.warning(f'{name}: y_prob differs from y_prob_raw scaled with T={T:.4f} (max abs {gap:.2e}); '
+                               'the OOF calibration scale may not match this set')
         shutil.copy2(p, os.path.join(exp_dir, f'predictions_{name}.npz'))
         res = evaluate_conformal_predictions(P, y, qhat, alpha=alpha)
-        rows.append({'dataset': name, **res})
+        rows.append({'dataset': name, **res, 'temperature': f'{T:.4f}'})
         plot_conformal_diagnostics(predict_intervals(P, qhat), y, qhat, alpha, fig_dir, prefix=f'conformal_{name}')
     for legacy in ('predictions_test.npz', 'predictions_external_dev.npz', 'predictions_external_test.npz'):
         src = os.path.join(base_dir, legacy)
@@ -392,7 +425,7 @@ def run_calibrate_conformal(cfg: dict):
         sum_df['description'] = cfg.get('description') or f'Conformal calibration on {base}'
         sum_df['winner_eligible'] = 'false'
         sum_df['decision'] = '' if pd.isna(decision) else decision
-        sum_df['notes'] = f'conformal qhat={qhat:.4f}, alpha={alpha:.2f}'
+        sum_df['notes'] = f'conformal qhat={qhat:.4f}, alpha={alpha:.2f}, OOF calibrated with T={T:.4f}'
         sum_df.to_csv(os.path.join(exp_dir, 'summary.csv'), index=False)
 
     snap_cfg = dict(cfg, ckpt_from=ckpt_owner(base), base=base, conformal_alpha=alpha, kind='calibrate_conformal')
@@ -400,7 +433,7 @@ def run_calibrate_conformal(cfg: dict):
         yaml.safe_dump(snap_cfg, f_snap)
     with open(os.path.join(exp_dir, 'config.yaml'), 'w') as f_cfg:
         yaml.safe_dump(dict(cfg, kind='calibrate_conformal', base=base, ckpt_from=ckpt_owner(base)), f_cfg)
-    log_run(tag, 'calibrate_conformal', {'qhat': qhat, 'alpha': alpha,
+    log_run(tag, 'calibrate_conformal', {'qhat': qhat, 'alpha': alpha, 'temperature': T,
                                          **{f'{r["dataset"]}_coverage': r['empirical_coverage'] for r in rows}})
     by = {r['dataset']: r for r in rows}
     return by.get('aptos_test'), by.get('messidor_test')

@@ -1,4 +1,4 @@
-# SERVER TODO — every step of the paper, in order (state of 2026-11-13)
+# SERVER TODO — every step of the paper, in order (state of 2026-11-16)
 
 This file is enough to run the whole project: every command is written here in full, so you do not need
 `commands.md` (it stays as the reference with more background). What can be deleted, and when, is in
@@ -7,161 +7,77 @@ This file is enough to run the whole project: every command is written here in f
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
 
-## ▶ NEXT (Monday 2026-11-16): R6 shift detector + environment report + one paper figure — ≈ 40 min in total, no zip
+## ▶ NEXT (Tuesday 2026-11-17): conformal re-run after the fix — ≈ 20 min in total, no zip
 
-Only this box tells you WHAT TO RUN NEXT. One new analysis, post-hoc / exploratory (not in the pre-declared
-rules): does the disagreement between the two label-free prior estimates (MLLS and BBSE) tell, WITHOUT any target
-label, when the label-free correction would hurt? Details and the pre-declared reading: R6 below and the docstring
-of `tools/shift_detector.py`. Nothing else has to be re-run; every other result is already on GitHub.
+Only this box tells you WHAT TO RUN NEXT. One re-run, CPU only, no GPU and no training. Every other result is
+already on GitHub.
 
-**Step 0 — on the Mac (≈ 2 min): push, then copy the code to the server.**
-Claude already put the new code in the Mac repo and committed it (2026-11-13: `tools/shift_detector.py`,
-`tests/test_shift_detector.py`, this file, `commands.md`, `agent_context/MODAL_PART2.md`; 7 redundant `.gitkeep`
-files removed — `checkpoints/pretrain/`, `logs/`, `softlabels/` keep theirs). 2026-11-15: Claude added
-`tools/paper_fig_operating_points.py` + `tests/test_paper_fig_operating_points.py` (paper Fig. 7) and committed them
-("paper figure tool"). If `git log -2` does not show the "R6" and "paper figure tool" commits, tell Claude.
-Push (password = your GitHub token):
-```bash
-cd /Users/meheraj/Documents/MODAL-Net
-git log --oneline -2
-git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
-```
-Then copy the code to the server with the B1 `rsync` line (section B; code only, never `results/` or `splits/`).
+**Why:** the stored conformal results were unusable (qhat = 1.00, every prediction set held all five grades,
+coverage trivially 100 %). Cause: the threshold was calibrated on the raw OOF probabilities but applied to the
+temperature-scaled probabilities of the evaluation sets, and the set growth compared floats without a
+tolerance. Claude fixed both on 2026-11-16 (`src/evaluation/conformal.py`, `src/evaluation/experiment.py`) and
+added `tests/test_conformal_temperature.py` (the whole suite passed: 164 tests). The re-run overwrites the two
+conformal folders; nothing else changes.
 
-**Step 1 — on the server (≈ 2 min): test the new code.**
+**Step 0 — copy the 3 changed files to the server (≈ 2 min).** Same paths on the server as on the Mac (WinSCP,
+or the B1 `rsync` line of section B; code only, never `results/` or `splits/`):
+
+| Mac file (under `MODAL-Net/`) | Server destination (under `.../envs/DR/`) |
+|---|---|
+| `src/evaluation/conformal.py` | `src/evaluation/` |
+| `src/evaluation/experiment.py` | `src/evaluation/` |
+| `tests/test_conformal_temperature.py` | `tests/` |
+
+**Step 1 — on the server (≈ 1 min): test the fix.**
 ```bash
 cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
-env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py tests/test_paper_fig_operating_points.py
+env/bin/python -m pytest -q -p no:warnings tests/test_conformal_temperature.py tests/test_inference.py
 ```
-Expected: `21 passed`. Anything else: stop and paste the output to Claude.
+Expected: `8 passed`. Anything else: stop and paste the output to Claude.
 
-**Step 2 — on the server (CPU, ≈ 10–20 min): run R6.**
+**Step 2 — on the server (≈ 1 min): keep a copy of the old (broken) results, just in case.**
 ```bash
-env/bin/python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
+mkdir -p outputs/conformal_old
+cp results/phase8_inference/p8_conformal_ce/conformal.csv outputs/conformal_old/p8_conformal_ce_conformal.csv
+cp results/phase8_inference/p8_conformal/conformal.csv outputs/conformal_old/p8_conformal_conformal.csv
 ```
-It prints the AUROC table, the PRIMARY line and the gating table at the end. Copy the whole printed output (from
-"AUROC, ALL tags pooled" to the "written:" line) — it goes to Claude in Step 4. Tick R6 below.
 
-**Step 2b — on the server (≈ 2 min): record the software and GPU versions for the paper.**
-The paper's Implementation Details need the exact server versions (Python, PyTorch, CUDA, cuDNN, timm,
-albumentations, GPU). Run the report once on the login node and once on an H100 node (the login node has no GPU,
-so CUDA/GPU lines only appear in the second one):
+**Step 3 — on the server (CPU, ≈ 5–10 min): re-run conformal for the main model and the ordinal model.**
 ```bash
-env/bin/python tools/env_report.py | tee outputs/env_report_login.txt
-phd run -p shr_gpu -ng 1 -GR H100 -l outputs/env_report_h100.txt -- env HF_HUB_OFFLINE=1 env/bin/python tools/env_report.py
-cat outputs/env_report_h100.txt
+env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10 2>&1 | tee outputs/conformal_ce.txt
+env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal --base p4j_coralsrc_shared --set conformal_alpha=0.10 2>&1 | tee outputs/conformal_ord.txt
+grep -h "qhat=\|temperature\|WARNING" outputs/conformal_ce.txt outputs/conformal_ord.txt
 ```
-Copy both printed reports — they go to Claude in Step 4 (no file transfer needed).
+The `grep` line prints the important lines: `Computed conformal cutoff qhat=... (... T=...)` for each model, plus
+any warning. For the main model T should be ≈ 1.83 and qhat should now be BELOW 1.0000. Copy these printed lines
+— they go to Claude in Step 5.
 
-**Step 2c — on the server (CPU, < 1 min): paper Fig. 7 (referable ROC + operating points of the main model).**
-The prediction files are only on the server, so this figure is drawn there.
-```bash
-env/bin/python tools/paper_fig_operating_points.py --exp_dir results/phase3b_joint/p3b_joint --tag p3b_joint
-```
-It prints `written results/figures/paper_fig07_operating_points.png/.pdf`.
+**Step 4 — bring the files to GitHub (WinSCP, ≈ 5 min; all small, no zip).**
 
-**Step 3 — bring the 8 small files to GitHub (WinSCP, ≈ 5 min; together < 4 MB, so no zip).**
-In WinSCP, on the server side, open `/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR` and drag these files
-to the PC, then move them to the Mac into the SAME folder names under `paper_inputs/`:
-
-| Server file (under `.../envs/DR/`) | Mac destination (under `MODAL-Net/`) |
+| Server file or folder (under `.../envs/DR/`) | Mac destination (under `MODAL-Net/`) |
 |---|---|
-| `results/master/recal/shift_detector_summary.csv` | `paper_inputs/results/master/recal/` |
-| `results/master/recal/shift_detector_gating.csv` | `paper_inputs/results/master/recal/` |
-| `results/master/recal/shift_detector_draws.csv` | `paper_inputs/results/master/recal/` |
-| `results/master/recal/shift_detector_notes.csv` | `paper_inputs/results/master/recal/` |
-| `results/figures/fig_shift_detector.png` | `paper_inputs/results/figures/` |
-| `results/figures/fig_shift_detector.pdf` | `paper_inputs/results/figures/` |
-| `results/figures/paper_fig07_operating_points.png` | `paper_inputs/results/figures/` |
-| `results/figures/paper_fig07_operating_points.pdf` | `paper_inputs/results/figures/` |
+| `results/phase8_inference/p8_conformal_ce/conformal.csv` | `paper_inputs/results/phase8_inference/p8_conformal_ce/` (replace the old file) |
+| `results/phase8_inference/p8_conformal/conformal.csv` | `paper_inputs/results/phase8_inference/p8_conformal/` (new folder) |
+| `results/phase8_inference/p8_conformal_ce/figures/` (whole folder, PNG + PDF diagnostics) | `paper_inputs/results/phase8_inference/p8_conformal_ce/figures/` |
+| `outputs/conformal_ce.txt` and `outputs/conformal_ord.txt` (run logs) | `paper_inputs/results/phase8_inference/` |
 
-Check on the Mac that all 8 are there (each line must print a size, none "No such file"), then push:
+On the Mac, check and push (every `ls` line must print a size, none "No such file"):
 ```bash
 cd /Users/meheraj/Documents/MODAL-Net
-ls -lh paper_inputs/results/master/recal/shift_detector_{summary,gating,draws,notes}.csv paper_inputs/results/figures/fig_shift_detector.{png,pdf} paper_inputs/results/figures/paper_fig07_operating_points.{png,pdf}
-git add paper_inputs/results/master/recal/shift_detector_*.csv paper_inputs/results/figures/fig_shift_detector.png paper_inputs/results/figures/fig_shift_detector.pdf paper_inputs/results/figures/paper_fig07_operating_points.png paper_inputs/results/figures/paper_fig07_operating_points.pdf
-git commit -m "R6 results: shift detector; paper Fig. 7"
+ls -lh paper_inputs/results/phase8_inference/p8_conformal_ce/conformal.csv paper_inputs/results/phase8_inference/p8_conformal/conformal.csv paper_inputs/results/phase8_inference/conformal_ce.txt paper_inputs/results/phase8_inference/conformal_ord.txt
+ls paper_inputs/results/phase8_inference/p8_conformal_ce/figures | head
+git add paper_inputs/results/phase8_inference
+git commit -m "Conformal re-run after the temperature/tolerance fix" -- paper_inputs/results/phase8_inference
 git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
 ```
-(If you prefer to keep figures encrypted as before: run `enc.py` on the PNG instead and push the JSON; the CSVs
-can go as they are.) A file missing on the server → its run did not finish: paste the end of the Step 2 output.
+(As before, figures may go encrypted with `enc.py` instead; the CSVs and the two .txt logs can go as they are.)
+A file missing on the server → that run did not finish: paste the end of its `outputs/conformal_*.txt`.
 
-**Step 4 — tell Claude:** "R6 pushed" + paste the Step 2 printed output and both Step 2b environment reports. Claude then decides with the R6 reading
-below whether the detector goes into the paper as an exploratory result (and whether that changes the target).
+**Step 5 — tell Claude:** "conformal pushed" + paste the Step 3 `grep` output. Claude then writes the conformal
+paragraph of Section 5.11 (or, if the sets are still uninformative, drops conformal from the paper and adds one
+line to the limitations).
 
 ---
-
-## ✅ DONE (2026-11-13): the last day of experiments — run order, start 09:00, target end ≈ 15:00
-(kept for the record: every step below ran on 2026-11-13 and its outputs are on GitHub under `paper_inputs/`)
-
-Only this box tells you WHAT TO RUN NEXT. The full commands also stay in their sections below (G4, R2, R3, H1,
-H3, H4); this box repeats them in the right order. 4 H100 GPUs are enough. "WAIT" = do not start the next
-block before the check line says everything is DONE.
-
-**Step 0 — 09:00, every new terminal (seconds):**
-```bash
-cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
-export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-df -h . | tail -1                                      # must be below ~90 % used
-```
-Check that tonight's jobs finished (R1: 6 + 3 files; H1/H2 of the headline CE model):
-```bash
-ls results/phase*/{p3b_joint,p10d_ce,p10q_ce}/target_adapt/*/summary.csv | wc -l        # expect 6
-ls results/phase*/{p3b_joint,p10d_ce,p10q_ce}/features/head.npz | wc -l                 # expect 3
-ls results/phase*/p3b_joint/xai/xai_localization.csv results/phase8_inference/p8_tta_flip_ce/summary.csv
-```
-Anything missing: look at its log in `outputs/recal/`, `outputs/xai/` or `outputs/phase8_inference/` and
-re-submit only that line from R1 / H1 / H2 (a `tent` job out of memory: add `grad_checkpointing=true` to its `--set`).
-Do this together with Step 1 — there are 4 GPUs.
-
-**Step 1 — 09:05, GPU, start FIRST because it is the longest (≈ 5 h): G4, 4 jobs at once (one per GPU):**
-```bash
-mkdir -p outputs/phase6_domain_gen
-phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
-phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_ms --inherit p3b_joint --set mixstyle=true ms_p=0.5 ms_alpha=0.1 winner_eligible=false
-phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_ms.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_ms --inherit p3b_joint --set amp_mix=true amp_stage=pre amp_beta_max=0.10 mixstyle=true winner_eligible=false
-phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase6_domain_gen/p6_amp_nojoint.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode experiment --phase phase6_domain_gen --tag p6_amp_nojoint --inherit p2b_none --set amp_mix=true amp_stage=pre amp_beta_max=0.10 winner_eligible=false
-```
-After ≈ 10 min look at the first lines of each log (`tail -n 20 outputs/phase6_domain_gen/p6_ms.txt`): a crash
-or out-of-memory shows up early. Out of memory → re-submit that one line with `grad_checkpointing=true` added.
-Also check the style bank of the amplitude-mixing runs (expect ≈ 2000 EyePACS images for the joint runs):
-`grep -i "style bank" outputs/phase6_domain_gen/*.txt logs/p6_*/*.log 2>/dev/null | head`
-(These G4 commands were tested end-to-end on the current code: tests/test_g4_lineage.py.)
-
-**Step 2 — 09:15, CPU, while the GPUs work (≈ 30 min, run these one after the other, in this order):**
-```bash
-# 2a. conformal of the headline CE model (H1) — skip if results/phase8_inference/p8_conformal_ce/ exists
-env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
-# 2b. R2: few-label last-layer fine-tuning (needs the 3 head.npz of Step 0)
-env/bin/python tools/fewshot_head.py --tags p3b_joint,p10d_ce,p10q_ce
-# 2c. R3: duplicate-audit rows + the main recalibration suite (needs R1 + R2)
-env/bin/python tools/leakage_check.py --tags p2b_none,p3a_sup,p3b_joint,p4_coral,p10d_ce,p10q_ce,p4j_coralsrc_shared
-env/bin/python tools/recalibration_suite.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
-```
-Tick R2, R3 (and H1 if 2a ran) below. Optional: send the daily report now (the R3 result decides the framing).
-
-**Step 3 — WAIT until all 4 G4 runs are DONE (≈ 14:00), then CPU (≈ 10 min):**
-```bash
-for t in p6_amp p6_ms p6_amp_ms p6_amp_nojoint; do ls results/phase*/"$t"/summary.csv >/dev/null 2>&1 && echo "DONE     $t" || echo "not yet  $t"; done
-env/bin/python main.py --mode phase_select --phase phase6_domain_gen --reference p3b_joint --set select_report_only=true
-env/bin/python tools/recalibration_suite.py --out_dir results/master/recal_dg --tags p6_amp,p6_ms,p6_amp_ms,p6_amp_nojoint,p3b_joint
-```
-Tick G4.
-
-**Step 4 — H3, the LAST computation (CPU, ≈ 5 min; only after Steps 2 and 3):**
-```bash
-env/bin/python main.py --mode master_table
-env/bin/python main.py --mode seed_summary --reference p3b_joint
-env/bin/python main.py --mode report --set report_final=p3b_joint report_baseline=p2a_plain soft_label_run=sl_p4
-cat results/tables/TABLES_README.txt results/figures/FIGURES_README.txt
-```
-Tick H1, H2, H3.
-
-**Step 5 — share the results for the paper: follow `PAPER_INPUTS.md`** (collect + zip ≈ 1 min, then WinSCP →
-Mac → GitHub; it has a file-by-file backup plan if the zip fails, and a table of what to do if a file is missing).
-
-**Step 6 — H4 (backup + cleanup), only after the zip is safely on the Mac:** the H4 commands below, then
-`SERVER_CLEANUP.md` sections 1, 3, 4 and 6 (never section 2).
 
 ## Daily report (upload these files to Claude once a day)
 
@@ -752,8 +668,8 @@ R5 waits for F2c, G3 and G3b.
   - Framing decided by the outcome, not afterwards: Primary 1 holds → method paper (target IEEE JBHI);
     Primary 1 fails → multi-dataset benchmark/analysis paper (target Computers in Biology and Medicine).
 
-- [ ] **R6 (optional, post-hoc exploratory, CPU, ≈ 10–20 min) — label-free shift detector** (added 2026-11-13
-  AFTER the step-R results; independent of everything else; run order in the "NEXT (Monday 2026-11-16)" box at the top):
+- [✅] **R6 (optional, post-hoc exploratory, CPU, ≈ 10–20 min) — label-free shift detector** (added 2026-11-13
+  AFTER the step-R results; independent of everything else; ran 2026-11-16, results on GitHub under `paper_inputs/`):
   ```bash
   env/bin/python -m pytest -q -p no:warnings tests/test_shift_detector.py tests/test_shift_decomposition.py   # 19 passed
   env/bin/python tools/shift_detector.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared
@@ -795,6 +711,7 @@ H3 must be the very last computation.
   Headline CE model `p3b_joint` (same two products; conformal is CPU, TTA is 1 GPU job — can be submitted together with R1):
   ```bash
   env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
+  # 2026-11-16: both conformal runs must be RE-RUN after the conformal fix — see the NEXT (Tuesday 2026-11-17) box.
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip_ce --base p3b_joint --set tta=flip
   ```
 - [✅] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
