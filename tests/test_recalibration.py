@@ -664,3 +664,43 @@ def test_bootstrap_priors_identical_resamples_ci_and_shrinkage_behaviour():
     assert np.allclose(ls.bagged_prevalence_cutpoints(E, np.tile(PI_TGT, (7, 1))), prevalence_cutpoints(E, PI_TGT))
     cz = ls.bagged_prevalence_cutpoints(E, np.tile([0.5, 0.0, 0.0, 0.25, 0.25], (3, 1)))
     assert np.all(np.diff(cz) > 0)
+
+
+def test_extra_refs_add_paired_oracle_quantile_vs_oracle_bayes():
+    """--extra_refs oracle_bayes adds paired rows (oracle_quantile - oracle_bayes) without changing the rest."""
+    rng = np.random.default_rng(12)
+    _fabricate(rng)
+    base = [sys.executable, TOOL, '--tags', 'r_ce,r_ord', '--ns', '10,25', '--draws', '3', '--B', '40',
+            '--misspec_draws', '4']
+    out_a = os.path.join('results', 'master', 'recal_a')
+    out_b = os.path.join('results', 'master', 'recal_b')
+    r = subprocess.run(base + ['--out_dir', out_a], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    fig_b = os.path.join(out_b, 'figures')
+    r = subprocess.run(base + ['--out_dir', out_b, '--extra_refs', 'oracle_bayes', '--fig_dir', fig_b],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert os.path.isfile(os.path.join(fig_b, 'fig_recal_levels.png'))
+    a = pd.read_csv(os.path.join(out_a, 'recal_compare.csv'))
+    b = pd.read_csv(os.path.join(out_b, 'recal_compare.csv'))
+    assert set(a['reference']) | {'oracle_bayes'} == set(b['reference'])
+    sel = b[(b['reference'] == 'oracle_bayes') & (b['method'] == 'oracle_quantile') & (b['metric'] == 'qwk')]
+    assert {'messidor', 'deepdrid', 'idrid', 'MEAN'} <= set(sel[sel['tag'] == 'r_ce']['dataset'])
+    assert sel['diff_lo'].notna().all() and (sel['diff_lo'] <= sel['diff_hi']).all()
+    # the point difference equals the difference of the two full-TEST QWKs in recal_summary.csv
+    sm = pd.read_csv(os.path.join(out_b, 'recal_summary.csv'))
+    sm = sm[(sm['tag'] == 'r_ce') & (sm['dataset'] == 'messidor')].set_index('method')['qwk_mean']
+    row = sel[(sel['tag'] == 'r_ce') & (sel['dataset'] == 'messidor')].iloc[0]
+    want = float(sm['oracle_quantile']) - float(sm['oracle_bayes'])
+    assert abs(row['diff_point'] - want) < 1e-5
+    # rows that existed before are unchanged (same seeds)
+    key = ['reference', 'tag', 'dataset', 'method', 'n', 'metric']
+    m = a.merge(b, on=key, suffixes=('_a', '_b'))
+    assert len(m) == len(a)
+    assert np.allclose(m['diff_point_a'], m['diff_point_b'], equal_nan=True)
+    assert np.allclose(m['diff_lo_a'], m['diff_lo_b'], equal_nan=True)
+    # an unknown method is rejected before anything is written
+    out_c = os.path.join('results', 'master', 'recal_c')
+    r = subprocess.run(base + ['--out_dir', out_c, '--extra_refs', 'no_such_method'], capture_output=True, text=True)
+    assert r.returncode == 2 and 'no_such_method' in r.stdout
+    assert not os.path.exists(os.path.join(out_c, 'recal_compare.csv'))

@@ -80,7 +80,8 @@ Outputs (--out_dir, default results/master/recal):
                                between tags); dataset 'MEAN_COMMON' = unweighted mean over the held-out datasets
                                COMMON to every analysed tag (intersection; like-for-like across tags). Column
                                `sites` lists the datasets averaged (the dataset itself on per-site rows)
-  recal_compare.csv            paired differences vs argmax and mlls_bcts_bayes (and fewshot_plain at the
+  recal_compare.csv            paired differences vs argmax and mlls_bcts_bayes (plus any --extra_refs, e.g.
+                               oracle_bayes; and fewshot_plain at the
                                same n), per site, MEAN and MEAN_COMMON (column `sites`):
                                deterministic -> paired cluster bootstrap on TEST (unit in bootstrap_unit;
                                interval_source 'TEST bootstrap');
@@ -856,8 +857,12 @@ def _cmp_row(ref, tag, ds, method, info, n, metric, point, d, unit, sites=None, 
     return r
 
 
-def compare(draws, results, common=None):
-    """Paired differences (see the module docstring, recal_compare.csv)."""
+def compare(draws, results, common=None, refs=REFERENCES):
+    """Paired differences (see the module docstring, recal_compare.csv).
+
+    `refs` are the deterministic reference methods; REFERENCES by default, extended with --extra_refs
+    (e.g. oracle_bayes, which gives the paired difference oracle_quantile - oracle_bayes).
+    """
     rows = []
     common = common_sites(results) if common is None else list(common)
     for R in results:
@@ -867,7 +872,7 @@ def compare(draws, results, common=None):
         counts = dt.groupby(['dataset', 'method', 'n'])['draw'].count()
         # deterministic methods: paired cluster bootstrap on TEST
         det_methods = sorted({m for (ds, m) in R.boot}, key=str)
-        for ref in REFERENCES:
+        for ref in refs:
             for method in det_methods:
                 if method == ref:
                     continue
@@ -913,8 +918,8 @@ def compare(draws, results, common=None):
         draw_keys = sorted({(m, int(n)) for (ds, m, n), c in counts.items() if c > 1 or int(n) > 0}, key=str)
         for method, n in draw_keys:
             info = dt.loc[(dt['method'] == method) & (dt['n'] == n), 'info'].iloc[0]
-            refs = list(REFERENCES) + (['fewshot_plain'] if n > 0 and method != 'fewshot_plain' else [])
-            for ref in refs:
+            refs_m = list(refs) + (['fewshot_plain'] if n > 0 and method != 'fewshot_plain' else [])
+            for ref in refs_m:
                 for metric in CMP_METRICS:
                     per, perj = {}, {}
                     for ds in R.sites:
@@ -1283,6 +1288,11 @@ def main(argv=None):
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--fig_n', type=int, default=25, help='n shown for few-label methods in fig_recal_levels')
     ap.add_argument('--out_dir', default=os.path.join('results', 'master', 'recal'))
+    ap.add_argument('--extra_refs', default='',
+                    help='comma-separated deterministic methods added as references of recal_compare.csv '
+                         '(default none: argmax and mlls_bcts_bayes only), e.g. oracle_bayes')
+    ap.add_argument('--fig_dir', default=os.path.join('results', 'figures'),
+                    help='folder of the fig_recal_* figures (set it to keep earlier figures untouched)')
     a = ap.parse_args(argv)
     tags = [t.strip() for t in a.tags.split(',') if t.strip()]
     ns = [int(x) for x in a.ns.split(',') if x.strip()]
@@ -1302,6 +1312,14 @@ def main(argv=None):
     if not results:
         print('recalibration_suite: no held-out dev/test predictions found for any tag')
         sys.exit(1)
+    extra = [m.strip() for m in a.extra_refs.split(',') if m.strip()]
+    known = {m for R in results for (_, m) in R.boot}
+    unknown = [m for m in extra if m not in known]
+    if unknown:
+        print(f'recalibration_suite: --extra_refs {unknown} are not deterministic methods of this run '
+              f'(choose from {sorted(known)})')
+        sys.exit(2)
+    refs = tuple(REFERENCES) + tuple(m for m in extra if m not in REFERENCES)
     os.makedirs(a.out_dir, exist_ok=True)
     common = common_sites(results)
     rtags = [R.tag for R in results]
@@ -1320,7 +1338,7 @@ def main(argv=None):
     summary.round(6).to_csv(os.path.join(a.out_dir, 'recal_summary.csv'), index=False)
     timing.append(('summarise', time.perf_counter() - t0))
     t0 = time.perf_counter()
-    cmp = compare(draws_all, results, common)
+    cmp = compare(draws_all, results, common, refs=refs)
     cmp.round(6).to_csv(os.path.join(a.out_dir, 'recal_compare.csv'), index=False)
     timing.append(('compare (incl. joint draws x TEST bootstrap)', time.perf_counter() - t0))
     t0 = time.perf_counter()
@@ -1347,7 +1365,7 @@ def main(argv=None):
         os.path.join(a.out_dir, 'recal_notes.csv'), index=False)
     timing.append(('other tables', time.perf_counter() - t0))
     t0 = time.perf_counter()
-    fig_dir = os.path.join('results', 'figures')
+    fig_dir = a.fig_dir
     plot_levels(summary, rtags, a.fig_n, os.path.join(fig_dir, 'fig_recal_levels'))
     plot_misspec(summary, rtags, os.path.join(fig_dir, 'fig_recal_misspec'))
     plot_operating_points(results, summary, bdf, os.path.join(fig_dir, 'fig_recal_operating_points'))

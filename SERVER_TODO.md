@@ -1,4 +1,4 @@
-# SERVER TODO — every step of the paper, in order (state of 2026-11-16)
+# SERVER TODO — every step of the paper, in order (state of 2026-11-18)
 
 This file is enough to run the whole project: every command is written here in full, so you do not need
 `commands.md` (it stays as the reference with more background). What can be deleted, and when, is in
@@ -7,75 +7,89 @@ This file is enough to run the whole project: every command is written here in f
 Tick the boxes yourself as you go. **Mandatory** steps are needed for the paper; *optional* steps can be
 skipped without breaking anything later.
 
-## ▶ NEXT (Tuesday 2026-11-17): conformal re-run after the fix — ≈ 20 min in total, no zip
+## ▶ NEXT (Wednesday 2026-11-18): two small CPU checks for the paper — ≈ 30 min in total, no GPU, no zip
 
-Only this box tells you WHAT TO RUN NEXT. One re-run, CPU only, no GPU and no training. Every other result is
-already on GitHub.
+Only this box tells you WHAT TO RUN NEXT. CPU only, no training. Every other result is already on GitHub.
 
-**Why:** the stored conformal results were unusable (qhat = 1.00, every prediction set held all five grades,
-coverage trivially 100 %). Cause: the threshold was calibrated on the raw OOF probabilities but applied to the
-temperature-scaled probabilities of the evaluation sets, and the set growth compared floats without a
-tolerance. Claude fixed both on 2026-11-16 (`src/evaluation/conformal.py`, `src/evaluation/experiment.py`) and
-added `tests/test_conformal_temperature.py` (the whole suite passed: 164 tests). The re-run overwrites the two
-conformal folders; nothing else changes.
+**Why:**
+1. The paper's key contrast is "the same true prevalence helps as quantile cut-points but hurts as a Bayes
+   correction". Each rule has an interval against argmax, but the paired interval of their difference
+   (`oracle_quantile − oracle_bayes`) was never computed. Claude added `--extra_refs` (and `--fig_dir`) to
+   `tools/recalibration_suite.py` on 2026-11-18, with a test. This analysis is post hoc; the paper says so.
+2. The APTOS-test (internal) C-index of the four other backbones is already on the server in
+   `results/master/recal_backbones/aptos_dup_sensitivity.csv` (written by R5); it was only not copied.
 
-**Step 0 — copy the 3 changed files to the server (≈ 2 min).** Same paths on the server as on the Mac (WinSCP,
+**Step 0 — copy the 2 changed files to the server (≈ 2 min).** Same paths on the server as on the Mac (WinSCP,
 or the B1 `rsync` line of section B; code only, never `results/` or `splits/`):
 
 | Mac file (under `MODAL-Net/`) | Server destination (under `.../envs/DR/`) |
 |---|---|
-| `src/evaluation/conformal.py` | `src/evaluation/` |
-| `src/evaluation/experiment.py` | `src/evaluation/` |
-| `tests/test_conformal_temperature.py` | `tests/` |
+| `tools/recalibration_suite.py` | `tools/` |
+| `tests/test_recalibration.py` | `tests/` |
 
-**Step 1 — on the server (≈ 1 min): test the fix.**
+**Step 1 — on the server (≈ 2 min): test.**
 ```bash
 cd /home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR
-env/bin/python -m pytest -q -p no:warnings tests/test_conformal_temperature.py tests/test_inference.py
+env/bin/python -m pytest -q -p no:warnings tests/test_recalibration.py tests/test_report_recal.py tests/test_adaptation.py tests/test_target_adapt.py tests/test_g4_lineage.py
 ```
-Expected: `8 passed`. Anything else: stop and paste the output to Claude.
+Expected: `... passed` and no `failed` or `error`. Anything else: stop and paste the output to Claude.
 
-**Step 2 — on the server (≈ 1 min): keep a copy of the old (broken) results, just in case.**
+**Step 2 — on the server (≈ 10 s): check that the backbone file exists.**
 ```bash
-mkdir -p outputs/conformal_old
-cp results/phase8_inference/p8_conformal_ce/conformal.csv outputs/conformal_old/p8_conformal_ce_conformal.csv
-cp results/phase8_inference/p8_conformal/conformal.csv outputs/conformal_old/p8_conformal_conformal.csv
+ls -lh results/master/recal_backbones/aptos_dup_sensitivity.csv results/master/recal_backbones/ordinal_discrimination.csv
+```
+Both print a size → nothing to run for check 2. If either says "No such file", run this once (CPU, ≈ 10 min,
+new folder, nothing is overwritten) and upload from `recal_backbones_v2` instead in Step 4:
+```bash
+env/bin/python tools/recalibration_suite.py --tags p5_convnextv2,p5_effnetv2,p5_retfound,p5_retfound_joint --out_dir results/master/recal_backbones_v2 --fig_dir results/master/recal_backbones_v2/figures
 ```
 
-**Step 3 — on the server (CPU, ≈ 5–10 min): re-run conformal for the main model and the ordinal model.**
+**Step 3 — on the server (CPU, ≈ 5–15 min): paired interval of quantile versus Bayes with the true prevalence.**
+New folder; the R3 results in `results/master/recal/` and the figures in `results/figures/` are not touched.
 ```bash
-env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10 2>&1 | tee outputs/conformal_ce.txt
-env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal --base p4j_coralsrc_shared --set conformal_alpha=0.10 2>&1 | tee outputs/conformal_ord.txt
-grep -h "qhat=\|temperature\|WARNING" outputs/conformal_ce.txt outputs/conformal_ord.txt
+mkdir -p results/master/recal_oracleref
+cp results/master/recal/fewshot_head_draws.csv results/master/recal_oracleref/
+env/bin/python tools/recalibration_suite.py --tags p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared --extra_refs oracle_bayes --out_dir results/master/recal_oracleref --fig_dir results/master/recal_oracleref/figures 2>&1 | tee outputs/recal_oracleref.txt
+env/bin/python - <<'EOF'
+import pandas as pd
+c = pd.read_csv('results/master/recal_oracleref/recal_compare.csv')
+s = c[(c.reference == 'oracle_bayes') & (c.method == 'oracle_quantile') & (c.metric == 'qwk')
+      & c.dataset.isin(['messidor', 'ddr', 'deepdrid', 'idrid', 'MEAN'])]
+print(s[['tag', 'dataset', 'diff_point', 'diff_lo', 'diff_hi']].round(3).to_string(index=False))
+k = ['tag', 'dataset', 'method', 'info', 'n']
+a = pd.read_csv('results/master/recal/recal_summary.csv')
+b = pd.read_csv('results/master/recal_oracleref/recal_summary.csv')
+m = a.merge(b, on=k, suffixes=('_old', '_new'))
+print('rows compared:', len(m), '| max |QWK change| vs R3:', float((m.qwk_mean_old - m.qwk_mean_new).abs().max()))
+EOF
 ```
-The `grep` line prints the important lines: `Computed conformal cutoff qhat=... (... T=...)` for each model, plus
-any warning. For the main model T should be ≈ 1.83 and qhat should now be BELOW 1.0000. Copy these printed lines
-— they go to Claude in Step 5.
+The last line must say `max |QWK change| vs R3: 0.0` (or below 1e-6): the run reproduces R3 exactly and only adds
+rows. Copy everything the Python block printed — it goes to Claude in Step 5.
 
 **Step 4 — bring the files to GitHub (WinSCP, ≈ 5 min; all small, no zip).**
 
-| Server file or folder (under `.../envs/DR/`) | Mac destination (under `MODAL-Net/`) |
+| Server file (under `.../envs/DR/`) | Mac destination (under `MODAL-Net/`) |
 |---|---|
-| `results/phase8_inference/p8_conformal_ce/conformal.csv` | `paper_inputs/results/phase8_inference/p8_conformal_ce/` (replace the old file) |
-| `results/phase8_inference/p8_conformal/conformal.csv` | `paper_inputs/results/phase8_inference/p8_conformal/` (new folder) |
-| `results/phase8_inference/p8_conformal_ce/figures/` (whole folder, PNG + PDF diagnostics) | `paper_inputs/results/phase8_inference/p8_conformal_ce/figures/` |
-| `outputs/conformal_ce.txt` and `outputs/conformal_ord.txt` (run logs) | `paper_inputs/results/phase8_inference/` |
+| `results/master/recal_oracleref/recal_compare.csv` | `paper_inputs/results/master/recal_oracleref/` (new folder) |
+| `results/master/recal_oracleref/recal_summary.csv` | `paper_inputs/results/master/recal_oracleref/` |
+| `results/master/recal_oracleref/recal_notes.csv` | `paper_inputs/results/master/recal_oracleref/` |
+| `outputs/recal_oracleref.txt` (run log) | `paper_inputs/results/master/recal_oracleref/` |
+| `results/master/recal_backbones/aptos_dup_sensitivity.csv` | `paper_inputs/results/master/recal_backbones/` |
+| `results/master/recal_backbones/ordinal_discrimination.csv` | `paper_inputs/results/master/recal_backbones/` |
+
+Do NOT copy `recal_draws.csv` (large) or the `figures/` folder of `recal_oracleref`.
 
 On the Mac, check and push (every `ls` line must print a size, none "No such file"):
 ```bash
 cd /Users/meheraj/Documents/MODAL-Net
-ls -lh paper_inputs/results/phase8_inference/p8_conformal_ce/conformal.csv paper_inputs/results/phase8_inference/p8_conformal/conformal.csv paper_inputs/results/phase8_inference/conformal_ce.txt paper_inputs/results/phase8_inference/conformal_ord.txt
-ls paper_inputs/results/phase8_inference/p8_conformal_ce/figures | head
-git add paper_inputs/results/phase8_inference
-git commit -m "Conformal re-run after the temperature/tolerance fix" -- paper_inputs/results/phase8_inference
+ls -lh paper_inputs/results/master/recal_oracleref/recal_compare.csv paper_inputs/results/master/recal_oracleref/recal_summary.csv paper_inputs/results/master/recal_oracleref/recal_notes.csv paper_inputs/results/master/recal_oracleref/recal_oracleref.txt paper_inputs/results/master/recal_backbones/aptos_dup_sensitivity.csv paper_inputs/results/master/recal_backbones/ordinal_discrimination.csv
+git add paper_inputs/results/master/recal_oracleref paper_inputs/results/master/recal_backbones
+git commit -m "Paired oracle quantile vs Bayes interval; backbone APTOS-test C-index" -- paper_inputs/results/master/recal_oracleref paper_inputs/results/master/recal_backbones
 git -c credential.helper= push https://msrbd-spec@github.com/msrbd-spec/MODAL-Net.git main
 ```
-(As before, figures may go encrypted with `enc.py` instead; the CSVs and the two .txt logs can go as they are.)
-A file missing on the server → that run did not finish: paste the end of its `outputs/conformal_*.txt`.
 
-**Step 5 — tell Claude:** "conformal pushed" + paste the Step 3 `grep` output. Claude then writes the conformal
-paragraph of Section 5.11 (or, if the sets are still uninformative, drops conformal from the paper and adds one
-line to the limitations).
+**Step 5 — tell Claude:** "oracleref pushed" + paste the Step 3 Python output. Claude then adds the paired
+interval to Section 5.6 and the APTOS-test C-index of the backbones to Section 5.10 and Supplementary Table S3.
 
 ---
 
@@ -711,7 +725,7 @@ H3 must be the very last computation.
   Headline CE model `p3b_joint` (same two products; conformal is CPU, TTA is 1 GPU job — can be submitted together with R1):
   ```bash
   env/bin/python main.py --mode calibrate_conformal --phase phase8_inference --tag p8_conformal_ce --base p3b_joint --set conformal_alpha=0.10
-  # 2026-11-16: both conformal runs must be RE-RUN after the conformal fix — see the NEXT (Tuesday 2026-11-17) box.
+  # 2026-11-17: both conformal runs were re-run after the conformal fix (done; results on GitHub).
   phd run -p shr_gpu -ng 1 -GR H100 -l outputs/phase8_inference/p8_tta_flip_ce.txt -- env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 env/bin/python main.py --mode inference_experiment --phase phase8_inference --tag p8_tta_flip_ce --base p3b_joint --set tta=flip
   ```
 - [✅] **H2 (mandatory) — XAI** (grid + expert-mask localisation on DDR / IDRiD lesion masks; final vs baseline).
