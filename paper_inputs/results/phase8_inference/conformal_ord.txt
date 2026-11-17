@@ -1,0 +1,9 @@
+2026-11-17 12:09:16 | INFO | Mode: calibrate_conformal  Tag: p8_conformal  Phase: phase8_inference
+/home/sr5/imam.bokhary/project/LTA/Prepare_Data/envs/DR/env/lib/python3.9/site-packages/albumentations/check_version.py:147: UserWarning: Error fetching version info <urlopen error [Errno -2] Name or service not known>
+  data = fetch_version_info()
+2026-11-17 12:09:23 | INFO | === Starting Calibrate Conformal: tag=p8_conformal, phase=phase8_inference ===
+2026-11-17 12:09:23 | INFO | Calibrating from base experiment: p4j_coralsrc_shared (at results/phase4j_label_loss/p4j_coralsrc_shared)
+2026-11-17 12:09:23 | INFO | conformal: temperature 0.8001 from checkpoints/p4j_coralsrc_shared/thresholds.json
+2026-11-17 12:09:23 | INFO | Computed conformal cutoff qhat=1.0000 for alpha=0.10 (n_cal=3296, OOF temperature-scaled with T=0.8001)
+[set_bold_style] Matplotlib resolved bold font: LiberationSans-Bold.ttf (/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf)
+2026-11-17 12:09:27 | INFO | Conformal metrics saved to results/phase8_inference/p8_conformal/conformal.csv
