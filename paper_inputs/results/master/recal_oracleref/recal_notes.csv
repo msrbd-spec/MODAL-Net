@@ -1,0 +1,2 @@
+tag,dataset,method,note
+"p3b_joint,p10d_ce,p10q_ce,p4j_coralsrc_shared",MEAN_COMMON,-,"MEAN_COMMON = unweighted mean over the held-out datasets analysed for EVERY tag (intersection): messidor,idrid; per-tag held-out sets: p3b_joint: messidor,ddr,deepdrid,idrid; p10d_ce: messidor,deepdrid,idrid; p10q_ce: messidor,ddr,idrid; p4j_coralsrc_shared: messidor,ddr,deepdrid,idrid"
